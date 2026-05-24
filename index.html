@@ -939,6 +939,8 @@ async function handlePDF(file){
       });
     }
     parsedLines = parseLCLByCoords(allItems);
+    // DEBUG — à supprimer après
+console.log('Sample items:', allItems.slice(0,80).map(i=>`x:${i.x} y:${i.y} "${i.str}"`).join('\n'));
     renderImportTable();
   } catch(e){
     console.error(e);
@@ -1049,9 +1051,9 @@ function parseLCLByCoords(allItems){
       // Nouvelle transaction principale
       flush();
       const [,dd,mm] = dateStr.match(reDateTx);
-      const [,,vMM,,vYY] = valStr.match(reDateVal);
+      const [,vDD,vMM,vYY] = valStr.match(reDateVal);
       const year = '20' + vYY;
-      const isoDate = `${year}-${mm}-${dd}`;
+      const isoDate = `20${vYY}-${vMM}-${vDD}`;
       current = {
         date: isoDate,
         labelParts: libStr ? [libStr] : [],
