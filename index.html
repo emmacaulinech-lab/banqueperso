@@ -961,29 +961,97 @@ async function handlePDF(file){
     x ≥ 490       → colonne CRÉDIT (ex: "1 600,00")
 */
 function parseLCLByCoords(allItems){
-  // ── 1. Grouper par ligne Y (±4px) ──
+  // Séparer les items en deux zones : gauche (libellés) et droite (données)
+  const leftItems  = allItems.filter(i=>i.x >= 70 && i.x < 340 && i.str.trim());
+  const rightItems = allItems.filter(i=>i.x < 70 || i.x >= 340);
+
+  // ── Construire les lignes de DONNÉES (droite) groupées par Y ──
   const rowMap = {};
-  allItems.forEach(it=>{
-    if(!it.str) return;
+  rightItems.forEach(it=>{
+    if(!it.str.trim()) return;
     const key = Object.keys(rowMap).find(k=>Math.abs(+k - it.y) <= 4);
     if(key !== undefined) rowMap[key].push(it);
     else rowMap[it.y] = [it];
   });
 
-  const rows = Object.keys(rowMap)
-    .map(y=>({ y:+y, items: rowMap[y].sort((a,b)=>a.x-b.x) }))
-    .sort((a,b)=>a.y - b.y);
+  const reDateTx  = /^(\d{2})\.(\d{2})$/;
+  const reDateVal = /^(\d{2})\.(\d{2})\.(\d{2})$/;
+  const reAmt     = /^[\d\s]{1,10}[,\.]\d{2}$/;
+  function parseAmt(s){ return parseFloat(s.replace(/\s/g,'').replace(',','.')); }
 
-  // ── 2. Seuils X réels ──
-  const X_DATE_MAX   = 70;
-  const X_LIB_MAX    = 340;
-  const X_VAL_MAX    = 410;
-  const X_DEBIT_MAX  = 490;
+  // ── Extraire les transactions depuis les lignes de droite ──
+  const txRows = []; // { y, date, debit, credit }
+  Object.keys(rowMap).forEach(y=>{
+    const its = rowMap[y].sort((a,b)=>a.x-b.x);
+    const dateCol  = its.filter(i=>i.x < 70);
+    const valCol   = its.filter(i=>i.x >= 340 && i.x < 410);
+    const debitCol = its.filter(i=>i.x >= 410 && i.x < 490);
+    const credCol  = its.filter(i=>i.x >= 490);
 
-  const reDateTx  = /^(\d{2})\.(\d{2})$/;           // 08.04
-  const reDateVal = /^(\d{2})\.(\d{2})\.(\d{2})$/;  // 08.04.26
-  const reAmt     = /^[\d\s]{1,10}[,\.]\d{2}$/;     // 150,95 ou 1 600,00
+    const dateStr  = dateCol.map(i=>i.str).join('').trim();
+    const valStr   = valCol.map(i=>i.str).join('').trim();
+    const debitStr = debitCol.map(i=>i.str).join('').replace(/^\.*$/,'').trim();
+    const credStr  = credCol.map(i=>i.str).join('').replace(/^\.*$/,'').trim();
 
+    if(!reDateTx.test(dateStr) || !reDateVal.test(valStr)) return;
+
+    const [,vDD,vMM,vYY] = valStr.match(reDateVal);
+    const isoDate = `20${vYY}-${vMM}-${vDD}`;
+    const debit  = reAmt.test(debitStr) ? parseAmt(debitStr) : 0;
+    const credit = reAmt.test(credStr)  ? parseAmt(credStr)  : 0;
+    if(debit===0 && credit===0) return;
+
+    txRows.push({ y:+y, date:isoDate, debit, credit });
+  });
+
+  txRows.sort((a,b)=>a.y-b.y);
+
+  // ── Pour chaque transaction, trouver le libellé le plus proche par Y ──
+  // Les libellés sont dans la zone gauche (x≈75), groupés par Y
+  const libMap = {};
+  leftItems.forEach(it=>{
+    const key = Object.keys(libMap).find(k=>Math.abs(+k - it.y) <= 4);
+    if(key !== undefined) libMap[key].push(it);
+    else libMap[it.y] = [it];
+  });
+
+  const techLine  = /^(ref\.|id\.|libelle:|nature\s+du|ref\.mandat|iban|bic\s*:|page\s+\d)/i;
+  const skipWords = /ancien\s+solde|solde\s+(en\s+euros|intermediaire)|totaux|ecritures|lcl\s+vous|taux\s+d[eé]b|r[eé]capitulatif|services\s+de\s+compte|cartes\s+et\s+esp|autres\s+services|sous\s+totaux|garantie\s+des|votre\s+agence|cr[eé]dit\s+lyonnais|guillaume|marseille|plan\s+de/i;
+
+  // Construire un tableau trié des libellés par Y
+  const libRows = Object.keys(libMap)
+    .map(y=>({
+      y: +y,
+      text: libMap[y].sort((a,b)=>a.x-b.x).map(i=>i.str).join(' ').trim()
+    }))
+    .filter(r=>r.text && !techLine.test(r.text) && !skipWords.test(r.text))
+    .sort((a,b)=>a.y-b.y);
+
+  const results = [];
+  txRows.forEach(tx=>{
+    // Chercher tous les libellés dans une fenêtre Y autour de la transaction (±80px)
+    const nearby = libRows.filter(l=>Math.abs(l.y - tx.y) <= 80 && l.y >= tx.y - 10);
+    // Prendre le plus proche
+    nearby.sort((a,b)=>Math.abs(a.y-tx.y)-Math.abs(b.y-tx.y));
+    const label = nearby.length ? nearby[0].text.slice(0,80) : 'Transaction';
+
+    const isRec = /virement|cpam|caf\s+bouches|salaire|remb/i.test(label);
+    let amount, type;
+    if(tx.debit>0 && tx.credit===0){ amount=tx.debit; type='dep'; }
+    else if(tx.credit>0 && tx.debit===0){ amount=tx.credit; type='rec'; }
+    else { amount=isRec?tx.credit:tx.debit; type=isRec?'rec':'dep'; }
+
+    results.push({ date:tx.date, label, amount, type, catId:'' });
+  });
+
+  // Dédupliquer
+  const seen = new Set();
+  return results.filter(r=>{
+    const k=`${r.date}|${r.label}|${r.amount}`;
+    if(seen.has(k)) return false;
+    seen.add(k); return true;
+  }).filter(r=>r.amount>0 && r.amount<500000);
+}
   function parseAmt(s){ return parseFloat(s.replace(/\s/g,'').replace(',','.')); }
 
   const skipWords = /ancien\s+solde|solde\s+(en\s+euros|intermediaire)|totaux|^date\s+lib|ecritures|page\s+\d|lcl\s+vous|votre\s+autor|taux\s+d[eé]b|indice\s+de|r[eé]capitulatif|services\s+de\s+compte|cartes\s+et\s+esp|autres\s+services|sous\s+totaux|montant\s+d[eé]j|garantie\s+des|votre\s+agence|m[eé]diateur|cr[eé]dit\s+lyonnais/i;
