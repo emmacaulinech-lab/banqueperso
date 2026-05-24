@@ -969,7 +969,7 @@ function parseLCLByCoords(allItems){
   const rowMap = {};
   rightItems.forEach(it=>{
     if(!it.str.trim()) return;
-    const key = Object.keys(rowMap).find(k=>Math.abs(+k - it.y) <= 4 && rowMap[k][0].page === it.page);
+    const key = Object.keys(rowMap).find(k=>Math.abs(+k.split('_')[0] - it.y) <= 4 && rowMap[k][0].page === it.page);
     if(key !== undefined) rowMap[key].push(it);
     else rowMap[it.y+'_'+it.page] = [it];
   });
