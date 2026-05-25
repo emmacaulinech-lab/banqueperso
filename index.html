@@ -1042,7 +1042,8 @@ function parseLCLByCoords(allItems){
   const results = [];
   txRows.forEach(tx=>{
     // Chercher tous les libellés dans une fenêtre Y autour de la transaction (±80px)
-    const nearby = libRows.filter(l=>l.page===tx.page && Math.abs(l.y - tx.y) <= 80 && l.y >= tx.y - 10);
+    const exact = libRows.filter(l=>l.page===tx.page && Math.abs(l.y - tx.y) <= 6); 
+    const nearby = exact.length ? exact : libRows.filter(l=>l.page===tx.page && Math.abs(l.y - tx.y) <= 25 && l.y >= tx.y - 6);
     // Prendre le plus proche
     nearby.sort((a,b)=>Math.abs(a.y-tx.y)-Math.abs(b.y-tx.y));
     const label = nearby.length ? nearby[0].text.slice(0,80) : 'Transaction';
@@ -1063,7 +1064,6 @@ function parseLCLByCoords(allItems){
     if(seen.has(k)) return false;
     seen.add(k); return true;
   }).filter(r=>r.amount>0 && r.amount<500000);
-}
 
   // Auto-catégorisation par correspondance avec transactions existantes
   results.forEach(r=>{
@@ -1078,6 +1078,7 @@ function parseLCLByCoords(allItems){
     });
     if(match && match.catId) r.catId = match.catId;
   });
+}
 
 function renderImportTable(){
   const tbody = document.getElementById('import-tbody');
