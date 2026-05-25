@@ -834,6 +834,7 @@ function renderHistorique(){
         </div>
       </div>
       <div class="tx-amount ${t.type}">${t.type==='dep'?'−':'+'}${fa(t.amount)}</div>
+      <button class="tx-del" onclick="editTransaction('${t.id}')">✏️</button> 
       <button class="tx-del" onclick="delTransaction('${t.id}')">🗑</button>`;
     list.appendChild(div);
   });
@@ -845,7 +846,42 @@ async function delTransaction(id){
   await save();
   renderAll();
 }
+async function editTransaction(id){
+  const t = DB.transactions.find(t=>t.id===id);
+  if(!t) return;
 
+  // Montant
+  const amount = prompt('Montant (€) :', t.amount);
+  if(amount===null) return;
+  const newAmount = parseFloat(amount);
+  if(!newAmount||newAmount<=0){ alert('Montant invalide'); return; }
+
+  // Libellé
+  const label = prompt('Libellé :', t.label);
+  if(label===null) return;
+  if(!label.trim()){ alert('Libellé requis'); return; }
+
+  // Date
+  const date = prompt('Date (AAAA-MM-JJ) :', t.date);
+  if(date===null) return;
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date)){ alert('Format date invalide'); return; }
+
+  // Catégorie
+  const cats = DB.categories.filter(c=>c.type===t.type);
+  const catList = cats.map((c,i)=>`${i+1}. ${c.name}`).join('\n');
+  const catChoice = prompt(`Catégorie :\n${catList}\n\n0. Sans catégorie\n\nNuméro :`, cats.findIndex(c=>c.id===t.catId)+1||0);
+  if(catChoice===null) return;
+  const catIdx = parseInt(catChoice)-1;
+  const catId = catIdx>=0 && cats[catIdx] ? cats[catIdx].id : '';
+
+  t.amount = newAmount;
+  t.label  = label.trim();
+  t.date   = date;
+  t.catId  = catId;
+
+  await save();
+  renderAll();
+}
 // ════════════════════════════════════════
 // CATÉGORIES
 // ════════════════════════════════════════
