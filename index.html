@@ -943,6 +943,9 @@ function renderCategories(){
         </div>`;
       el.appendChild(div);
     });
+ });
+}
+
 
 async function updateBudget(id, val){
   const cat = DB.categories.find(c=>c.id===id);
