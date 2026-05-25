@@ -867,7 +867,7 @@ async function editTransaction(id){
   if(!/^\d{4}-\d{2}-\d{2}$/.test(date)){ alert('Format date invalide'); return; }
 
   // Catégorie
-  const cats = DB.categories.filter(c=>c.type===t.type);
+  const cats = DB.categories;
   const catList = cats.map((c,i)=>`${i+1}. ${c.name}`).join('\n');
   const catChoice = prompt(`Catégorie :\n${catList}\n\n0. Sans catégorie\n\nNuméro :`, cats.findIndex(c=>c.id===t.catId)+1||0);
   if(catChoice===null) return;
