@@ -1057,14 +1057,7 @@ function parseLCLByCoords(allItems){
     results.push({ date:tx.date, label, amount, type, catId:'' });
   });
 
-  // Dédupliquer
-  const seen = new Set();
-  return results.filter(r=>{
-    const k=`${r.date}|${r.label}|${r.amount}`;
-    if(seen.has(k)) return false;
-    seen.add(k); return true;
-  }).filter(r=>r.amount>0 && r.amount<500000);
-
+ 
   // Auto-catégorisation par correspondance avec transactions existantes
   results.forEach(r=>{
     if(r.catId) return;
@@ -1078,6 +1071,14 @@ function parseLCLByCoords(allItems){
     });
     if(match && match.catId) r.catId = match.catId;
   });
+
+  // Dédupliquer
+  const seen = new Set();
+  return results.filter(r=>{
+    const k=`${r.date}|${r.label}|${r.amount}`;
+    if(seen.has(k)) return false;
+    seen.add(k); return true;
+  }).filter(r=>r.amount>0 && r.amount<500000);
 }
 
 function renderImportTable(){
