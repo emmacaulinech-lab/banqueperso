@@ -235,6 +235,7 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
     <button class="tab" onclick="gT(2,this)">📋 Historique</button>
     <button class="tab" onclick="gT(3,this)">🏷️ Catégories</button>
     <button class="tab" onclick="gT(4,this)">📥 Import PDF</button>
+    <button class="tab" onclick="gT(5,this)">📈 Analyse</button>
   </div>
 
   <!-- ══ DASHBOARD ══ -->
@@ -431,8 +432,17 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
     </div>
   </div>
 
-</div>
+  <!-- ══ ANALYSE ══ -->
+  <div class="pane" id="pane-5">
+    <div class="section-title">📈 Analyse par catégorie</div>
+    <div class="card" style="margin-bottom:8px">
+      <div class="form-label">Catégorie</div>
+      <select id="an-cat" onchange="renderAnalyse()"><option value="">— Choisir —</option></select>
+    </div>
+    <div id="an-content"><div class="empty"><div class="emoji">📊</div>Choisis une catégorie</div></div>
+  </div>
 
+</div>
 <!-- MONTH PICKER MODAL -->
 <div id="month-modal" style="display:none;position:fixed;inset:0;background:rgba(153,53,86,.18);z-index:500;align-items:center;justify-content:center">
   <div style="background:#fff;border:1.5px solid #F4C0D1;border-radius:16px;padding:20px;width:300px;max-width:95vw">
@@ -567,6 +577,7 @@ function gT(i, el){
   if(i===0) renderDashboard();
   if(i===2) renderHistorique();
   if(i===3) renderCategories();
+  if(i===5) renderAnalyse();
 }
 
 // ════════════════════════════════════════
@@ -630,6 +641,7 @@ function renderAll(){
   renderHistorique();
   renderCategories();
   renderHistoriqueSelects();
+  renderAnalyseSelects();
 }
 
 // ════════════════════════════════════════
@@ -967,6 +979,84 @@ async function editCategory(id){
   if(name.trim()) cat.name = name.trim();
   await save();
   renderAll();
+}
+
+  function renderAnalyseSelects(){
+  const sel = document.getElementById('an-cat');
+  const current = sel.value;
+  sel.innerHTML = '<option value="">— Choisir —</option>';
+  DB.categories.forEach(c=>{
+    const opt = document.createElement('option');
+    opt.value = c.id;
+    opt.textContent = (c.type==='dep'?'💸 ':'💰 ') + c.name;
+    if(c.id===current) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
+function renderAnalyse(){
+  const catId = document.getElementById('an-cat').value;
+  const el = document.getElementById('an-content');
+  if(!catId){ el.innerHTML='<div class="empty"><div class="emoji">📊</div>Choisis une catégorie</div>'; return; }
+  const cat = DB.categories.find(c=>c.id===catId);
+  if(!cat) return;
+  const txCat = DB.transactions.filter(t=>t.catId===catId);
+  if(txCat.length===0){ el.innerHTML='<div class="empty">Aucune transaction dans cette catégorie</div>'; return; }
+  const byMonth = {};
+  txCat.forEach(t=>{ const m=t.date.slice(0,7); byMonth[m]=(byMonth[m]||0)+t.amount; });
+  const months = Object.keys(byMonth).sort();
+  const total = months.reduce((s,m)=>s+byMonth[m],0);
+  const avg = total/months.length;
+  const maxVal = Math.max(...months.map(m=>byMonth[m]));
+  let trend = '';
+  if(months.length>=2){
+    const last=byMonth[months[months.length-1]];
+    const prev=byMonth[months[months.length-2]];
+    const diff=last-prev;
+    trend=diff>0
+      ?`<span style="color:#c0392b;font-weight:700">↑ +${fa(Math.abs(diff))} vs mois préc.</span>`
+      :`<span style="color:#085041;font-weight:700">↓ −${fa(Math.abs(diff))} vs mois préc.</span>`;
+  }
+  let html=`
+    <div class="card" style="margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <div>
+          <div style="font-size:11px;color:#aaa;text-transform:uppercase;font-weight:700">Moyenne mensuelle</div>
+          <div style="font-size:22px;font-weight:800;color:#993556">${fa(avg)}</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:11px;color:#aaa;text-transform:uppercase;font-weight:700">Total</div>
+          <div style="font-size:16px;font-weight:800;color:#993556">${fa(total)}</div>
+        </div>
+      </div>
+      ${trend?`<div style="margin-top:8px;font-size:12px">${trend}</div>`:''}
+    </div>
+    <div class="card">`;
+  months.forEach(m=>{
+    const val=byMonth[m];
+    const budget=cat.budget>0?cat.budget:avg;
+    const pct=Math.min(100,Math.round(val/maxVal*100));
+    const budgetPct=Math.min(100,Math.round(val/budget*100));
+    const overBudget=budget>0&&val>=budget;
+    html+=`
+      <div style="margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+          <span style="font-weight:700;color:#2d2d2d">${formatMonth(m)}</span>
+          <span style="font-weight:800;color:${overBudget?'#c0392b':'#993556'}">${fa(val)}</span>
+        </div>
+        <div class="bar-wrap" style="height:10px">
+          <div class="bar-fill" style="width:${pct}%;background:${cat.color}"></div>
+        </div>
+        ${budget>0?`<div style="font-size:10px;color:#aaa;margin-top:2px">${budgetPct}% du budget ${fa(budget)} ${overBudget?'🚨':''}</div>`:''}
+      </div>`;
+  });
+  html+=`
+      <div style="border-top:1.5px solid #f5eef2;padding-top:10px;display:flex;justify-content:space-between;font-size:12px">
+        <span style="color:#aaa;font-weight:700">MOYENNE</span>
+        <span style="font-weight:800;color:#993556">${fa(avg)} / mois</span>
+      </div>
+    </div>`;
+  el.innerHTML=html;
 }
 
 // ════════════════════════════════════════
