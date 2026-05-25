@@ -908,7 +908,20 @@ function renderCategories(){
     el.innerHTML='';
     cats.forEach(cat=>{
       const spent = txMonth.filter(t=>t.type===type&&t.catId===cat.id).reduce((s,t)=>s+t.amount,0);
-      const pct = cat.budget>0 ? Math.min(100,Math.round(spent/cat.budget*100)) : 0;
+      c// Calcul budget auto si pas de budget manuel
+let autoBudget = 0;
+if(cat.budget===0){
+  const months = [...new Set(DB.transactions.filter(t=>t.catId===cat.id).map(t=>t.date.slice(0,7)))];
+  if(months.length>0){
+    const total = DB.transactions.filter(t=>t.catId===cat.id).reduce((s,t)=>s+t.amount,0);
+    const totalRec = DB.transactions.filter(t=>t.type==='rec').reduce((s,t)=>s+t.amount,0);
+    const nbMonths = [...new Set(DB.transactions.map(t=>t.date.slice(0,7)))].length || 1;
+    const maxBudget = totalRec / nbMonths;
+    autoBudget = Math.min(total/months.length, maxBudget);
+  }
+}
+const effectiveBudget = cat.budget > 0 ? cat.budget : autoBudget;
+        const pct = effectiveBudget>0 ? Math.min(100,Math.round(spent/effectiveBudget*100)) : 0;
       const div=document.createElement('div');
       div.className='cat-item';
       div.innerHTML=`
@@ -920,9 +933,9 @@ function renderCategories(){
           </div>
           <div class="cat-budget">
             Ce mois : <strong>${fa(spent)}</strong>
-            ${cat.budget>0?` / budget ${fa(cat.budget)}`:''}
+            ${effectiveBudget>0?` / budget ${fa(effectiveBudget)} ${cat.budget===0?'<span style="font-size:9px;color:#aaa">(auto)</span>':''}`:''}
           </div>
-          ${cat.budget>0?`<div class="prog"><div class="prog-b" style="width:${pct}%;background:${cat.color}"></div></div>`:''}
+          ${effectiveBudget>0?`<div class="prog"><div class="prog-b" style="width:${pct}%;background:${cat.color}"></div></div>`:''}
         </div>
         <div style="display:flex;gap:6px;align-items:center">
           <input type="number" value="${cat.budget||''}" placeholder="Budget" style="width:80px;padding:5px 8px;font-size:12px;border:1.5px solid #ddd;border-radius:8px" onchange="updateBudget('${cat.id}',this.value)"/>
