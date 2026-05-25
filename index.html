@@ -890,6 +890,7 @@ function renderCategories(){
         </div>
         <div style="display:flex;gap:6px;align-items:center">
           <input type="number" value="${cat.budget||''}" placeholder="Budget" style="width:80px;padding:5px 8px;font-size:12px;border:1.5px solid #ddd;border-radius:8px" onchange="updateBudget('${cat.id}',this.value)"/>
+          <button class="btn" style="padding:6px 10px;font-size:12px" onclick="editCategory('${cat.id}')">✏️</button> 
           <button class="btn red" style="padding:6px 10px;font-size:12px" onclick="delCategory('${cat.id}')">🗑</button>
         </div>`;
       el.appendChild(div);
@@ -905,6 +906,16 @@ async function updateBudget(id, val){
 async function delCategory(id){
   if(!confirm('Supprimer cette catégorie ?')) return;
   DB.categories = DB.categories.filter(c=>c.id!==id);
+  await save();
+  renderAll();
+}
+
+async function editCategory(id){
+  const cat = DB.categories.find(c=>c.id===id);
+  if(!cat) return;
+  const name = prompt('Nouveau nom :', cat.name);
+  if(name===null) return;
+  if(name.trim()) cat.name = name.trim();
   await save();
   renderAll();
 }
@@ -1054,6 +1065,20 @@ function parseLCLByCoords(allItems){
   }).filter(r=>r.amount>0 && r.amount<500000);
 }
 
+  // Auto-catégorisation par correspondance avec transactions existantes
+  results.forEach(r=>{
+    if(r.catId) return;
+    // Chercher une transaction existante avec un libellé similaire
+    const match = DB.transactions.find(t=>{
+      if(t.type !== r.type) return false;
+      const a = t.label.toLowerCase().replace(/\s+/g,' ').trim();
+      const b = r.label.toLowerCase().replace(/\s+/g,' ').trim();
+      // Correspondance si les 12 premiers caractères sont identiques
+      return a.slice(0,12) === b.slice(0,12);
+    });
+    if(match && match.catId) r.catId = match.catId;
+  });
+
 function renderImportTable(){
   const tbody = document.getElementById('import-tbody');
   tbody.innerHTML='';
@@ -1066,8 +1091,8 @@ function renderImportTable(){
     const tr=document.createElement('tr');
     // Catégories options
     const catOpts = ['<option value="">— Catégorie —</option>',
-      ...DB.categories.filter(c=>c.type===tx.type).map(c=>`<option value="${c.id}">${esc(c.name)}</option>`)
-    ].join('');
+  ...DB.categories.filter(c=>c.type===tx.type).map(c=>`<option value="${c.id}" ${c.id===tx.catId?'selected':''}>${esc(c.name)}</option>`)
+].join('');
     tr.innerHTML=`
       <td><input type="checkbox" class="import-chk" checked data-i="${i}"/></td>
       <td>${fdate(tx.date)}</td>
