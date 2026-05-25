@@ -1129,7 +1129,7 @@ function renderImportTable(){
     const tr=document.createElement('tr');
     // Catégories options
     const catOpts = ['<option value="">— Catégorie —</option>',
-  ...DB.categories.filter(c=>c.type===tx.type).map(c=>`<option value="${c.id}" ${c.id===tx.catId?'selected':''}>${esc(c.name)}</option>`)
+  ...DB.categories.map(c=>`<option value="${c.id}" ${c.id===tx.catId?'selected':''}>${esc(c.name)}</option>`)
 ].join('');
     tr.innerHTML=`
       <td><input type="checkbox" class="import-chk" checked data-i="${i}"/></td>
