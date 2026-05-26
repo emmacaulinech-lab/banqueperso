@@ -995,67 +995,144 @@ async function editCategory(id){
 }
 
 function renderAnalyse(){
+const el = document.getElementById('an-content');
   const catId = document.getElementById('an-cat').value;
-  const el = document.getElementById('an-content');
-  if(!catId){ el.innerHTML='<div class="empty"><div class="emoji">📊</div>Choisis une catégorie</div>'; return; }
+
+  // ── VUE GLOBALE si aucune catégorie sélectionnée ──
+  if(!catId){
+    const txMonth = DB.transactions.filter(t=>t.date.startsWith(currentMonth));
+    const totalDep = txMonth.filter(t=>t.type==='dep').reduce((s,t)=>s+t.amount,0);
+    if(totalDep===0){ el.innerHTML='<div class="empty"><div class="emoji">📊</div>Choisis une catégorie ou importe des transactions</div>'; return; }
+
+    // Top catégories
+    const depByCat = {};
+    txMonth.filter(t=>t.type==='dep').forEach(t=>{ depByCat[t.catId]=(depByCat[t.catId]||0)+t.amount; });
+    const ranked = Object.entries(depByCat).sort((a,b)=>b[1]-a[1]);
+    const medals = ['🥇','🥈','🥉','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣','🔟'];
+
+    let html=`<div class="card" style="margin-bottom:8px">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#993556;margin-bottom:12px">🏆 Classement ce mois-ci</div>`;
+    ranked.forEach(([cId, val], idx)=>{
+      const cat = DB.categories.find(c=>c.id===cId);
+      const name = cat?cat.name:'Sans catégorie';
+      const color = cat?cat.color:'#ccc';
+      const pct = Math.round(val/totalDep*100);
+      html+=`<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+        <span style="font-size:16px;width:24px">${medals[idx]||'·'}</span>
+        <div style="flex:1">
+          <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px">
+            <span style="font-weight:700">${esc(name)}</span>
+            <span style="font-weight:800;color:${color}">${fa(val)}</span>
+          </div>
+          <div class="bar-wrap"><div class="bar-fill" style="width:${pct}%;background:${color}"></div></div>
+          <div style="font-size:10px;color:#aaa;margin-top:2px">${pct}% des dépenses du mois</div>
+        </div>
+      </div>`;
+    });
+    html+=`</div>`;
+    el.innerHTML=html;
+    return;
+  }
+
+  // ── VUE DÉTAIL par catégorie ──
   const cat = DB.categories.find(c=>c.id===catId);
   if(!cat) return;
   const txCat = DB.transactions.filter(t=>t.catId===catId);
   if(txCat.length===0){ el.innerHTML='<div class="empty">Aucune transaction dans cette catégorie</div>'; return; }
+
   const byMonth = {};
   txCat.forEach(t=>{ const m=t.date.slice(0,7); byMonth[m]=(byMonth[m]||0)+t.amount; });
   const months = Object.keys(byMonth).sort();
   const total = months.reduce((s,m)=>s+byMonth[m],0);
   const avg = total/months.length;
   const maxVal = Math.max(...months.map(m=>byMonth[m]));
-  let trend = '';
-  if(months.length>=2){
-    const last=byMonth[months[months.length-1]];
-    const prev=byMonth[months[months.length-2]];
-    const diff=last-prev;
-    trend=diff>0
-      ?`<span style="color:#c0392b;font-weight:700">↑ +${fa(Math.abs(diff))} vs mois préc.</span>`
-      :`<span style="color:#085041;font-weight:700">↓ −${fa(Math.abs(diff))} vs mois préc.</span>`;
+
+  // Tendance sur les 3 derniers mois
+  let tendancePct = null;
+  if(months.length>=3){
+    const last3 = months.slice(-3).map(m=>byMonth[m]);
+    tendancePct = Math.round(((last3[2]-last3[0])/last3[0])*100);
   }
-  let html=`
-    <div class="card" style="margin-bottom:8px">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
-        <div>
-          <div style="font-size:11px;color:#aaa;text-transform:uppercase;font-weight:700">Moyenne mensuelle</div>
-          <div style="font-size:22px;font-weight:800;color:#993556">${fa(avg)}</div>
-        </div>
-        <div style="text-align:right">
-          <div style="font-size:11px;color:#aaa;text-transform:uppercase;font-weight:700">Total</div>
-          <div style="font-size:16px;font-weight:800;color:#993556">${fa(total)}</div>
-        </div>
-      </div>
-      ${trend?`<div style="margin-top:8px;font-size:12px">${trend}</div>`:''}
+
+  // Rang dans les dépenses ce mois
+  const txMonth = DB.transactions.filter(t=>t.date.startsWith(currentMonth));
+  const totalDepMois = txMonth.filter(t=>t.type==='dep').reduce((s,t)=>s+t.amount,0);
+  const totalRec = DB.transactions.filter(t=>t.type==='rec').reduce((s,t)=>s+t.amount,0);
+  const nbMonths = [...new Set(DB.transactions.map(t=>t.date.slice(0,7)))].length||1;
+  const avgRec = totalRec/nbMonths;
+  const depByCat = {};
+  txMonth.filter(t=>t.type==='dep').forEach(t=>{ depByCat[t.catId]=(depByCat[t.catId]||0)+t.amount; });
+  const ranked = Object.entries(depByCat).sort((a,b)=>b[1]-a[1]);
+  const rang = ranked.findIndex(([id])=>id===catId)+1;
+  const spentThisMonth = byMonth[currentMonth]||0;
+  const pctOfRec = avgRec>0 ? Math.round(avg/avgRec*100) : 0;
+  const medals = ['1er','2ème','3ème','4ème','5ème'];
+
+  // ── Commentaires intelligents bienveillants ──
+  const comments = [];
+  if(avg>0) comments.push(`💡 En moyenne, tu dépenses <strong>${fa(avg)}/mois</strong> en ${esc(cat.name)} — soit ${pctOfRec}% de tes rentrées mensuelles.`);
+  if(rang>0&&rang<=5) comments.push(`📊 C'est ton <strong>${medals[rang-1]} poste de dépense</strong> ce mois-ci.`);
+  if(cat.budget>0&&spentThisMonth>0){
+    const diff = spentThisMonth - cat.budget;
+    if(diff>0) comments.push(`🚨 Ce mois-ci tu as dépassé ton budget de <strong>${fa(diff)}</strong>. Pas de panique, tu vas y arriver ! 💪`);
+    else comments.push(`✨ Super ! Tu es dans les clous avec <strong>${fa(cat.budget-spentThisMonth)}</strong> de marge sur ton budget ce mois.`);
+  }
+  if(months.length>=2){
+    const last = byMonth[months[months.length-1]];
+    const prev = byMonth[months[months.length-2]];
+    const diff = last-prev;
+    if(diff>0) comments.push(`📈 Tu as dépensé <strong>${fa(Math.abs(diff))} de plus</strong> que le mois dernier — reste vigilante 👀`);
+    else comments.push(`🎉 Bravo ! <strong>${fa(Math.abs(diff))} de moins</strong> que le mois dernier, continue comme ça !`);
+  }
+  if(tendancePct!==null){
+    if(tendancePct>15) comments.push(`⚠️ Sur les 3 derniers mois, cette catégorie a augmenté de <strong>${tendancePct}%</strong>. Tu veux qu'on y garde un œil ?`);
+    else if(tendancePct<-15) comments.push(`🌟 Super tendance ! Cette catégorie a baissé de <strong>${Math.abs(tendancePct)}%</strong> sur 3 mois.`);
+    else comments.push(`😊 Cette catégorie est <strong>stable</strong> sur les 3 derniers mois, c'est rassurant !`);
+  }
+
+  let html=``;
+
+  // Commentaires
+  if(comments.length>0){
+    html+=`<div class="card" style="margin-bottom:8px;display:flex;flex-direction:column;gap:8px">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#993556;margin-bottom:4px">🌸 Analyse</div>`;
+    comments.forEach(c=>{ html+=`<div style="font-size:12px;color:#444;line-height:1.6;padding:8px 10px;background:#fdf6f9;border-radius:8px;border-left:3px solid #F4C0D1">${c}</div>`; });
+    html+=`</div>`;
+  }
+
+  // Résumé
+  html+=`<div class="card" style="margin-bottom:8px">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+      <div><div style="font-size:11px;color:#aaa;text-transform:uppercase;font-weight:700">Moyenne/mois</div>
+        <div style="font-size:22px;font-weight:800;color:#993556">${fa(avg)}</div></div>
+      <div style="text-align:right"><div style="font-size:11px;color:#aaa;text-transform:uppercase;font-weight:700">Total</div>
+        <div style="font-size:16px;font-weight:800;color:#993556">${fa(total)}</div></div>
     </div>
-    <div class="card">`;
+  </div>`;
+
+  // Évolution mois par mois
+  html+=`<div class="card">
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#993556;margin-bottom:12px">📅 Évolution</div>`;
   months.forEach(m=>{
     const val=byMonth[m];
     const budget=cat.budget>0?cat.budget:avg;
     const pct=Math.min(100,Math.round(val/maxVal*100));
     const budgetPct=Math.min(100,Math.round(val/budget*100));
-    const overBudget=budget>0&&val>=budget;
-    html+=`
-      <div style="margin-bottom:12px">
-        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
-          <span style="font-weight:700;color:#2d2d2d">${formatMonth(m)}</span>
-          <span style="font-weight:800;color:${overBudget?'#c0392b':'#993556'}">${fa(val)}</span>
-        </div>
-        <div class="bar-wrap" style="height:10px">
-          <div class="bar-fill" style="width:${pct}%;background:${cat.color}"></div>
-        </div>
-        ${budget>0?`<div style="font-size:10px;color:#aaa;margin-top:2px">${budgetPct}% du budget ${fa(budget)} ${overBudget?'🚨':''}</div>`:''}
-      </div>`;
-  });
-  html+=`
-      <div style="border-top:1.5px solid #f5eef2;padding-top:10px;display:flex;justify-content:space-between;font-size:12px">
-        <span style="color:#aaa;font-weight:700">MOYENNE</span>
-        <span style="font-weight:800;color:#993556">${fa(avg)} / mois</span>
+    const overBudget=cat.budget>0&&val>=cat.budget;
+    html+=`<div style="margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+        <span style="font-weight:700;color:#2d2d2d">${formatMonth(m)}</span>
+        <span style="font-weight:800;color:${overBudget?'#c0392b':'#993556'}">${fa(val)}</span>
       </div>
+      <div class="bar-wrap" style="height:10px"><div class="bar-fill" style="width:${pct}%;background:${cat.color}"></div></div>
+      ${budget>0?`<div style="font-size:10px;color:#aaa;margin-top:2px">${budgetPct}% du budget ${fa(budget)} ${overBudget?'🚨':''}</div>`:''}
     </div>`;
+  });
+  html+=`<div style="border-top:1.5px solid #f5eef2;padding-top:10px;display:flex;justify-content:space-between;font-size:12px">
+    <span style="color:#aaa;font-weight:700">MOYENNE</span>
+    <span style="font-weight:800;color:#993556">${fa(avg)} / mois</span>
+  </div></div>`;
+
   el.innerHTML=html;
 }
 
