@@ -842,12 +842,22 @@ function renderHistorique(){
   const period = document.getElementById('h-period').value;
   const catFilter = document.getElementById('h-cat').value;
   const typeFilter = document.getElementById('h-type').value;
+
+  // Calcule le solde cumulé sur TOUTES les transactions (ordre chronologique), peu importe le filtre
+  const allSorted=[...DB.transactions].sort((a,b)=>a.date.localeCompare(b.date)||String(a.id).localeCompare(String(b.id)));
+  let running=DB.params.soldeInitial||0;
+  const soldeMap={};
+  allSorted.forEach(t=>{
+    running += t.type==='rec' ? t.amount : -t.amount;
+    soldeMap[t.id]=running;
+  });
+
   let txs = [...DB.transactions];
   if(period==='month') txs = txs.filter(t=>t.date.startsWith(currentMonth));
   else if(period==='year') txs = txs.filter(t=>t.date.startsWith(currentMonth.split('-')[0]));
   if(catFilter) txs = txs.filter(t=>t.catId===catFilter);
   if(typeFilter) txs = txs.filter(t=>t.type===typeFilter);
-  txs.sort((a,b)=>b.date.localeCompare(a.date));
+  txs.sort((a,b)=>b.date.localeCompare(a.date)||String(b.id).localeCompare(String(a.id)));
   const list = document.getElementById('h-list');
   if(txs.length===0){ list.innerHTML='<div class="empty"><div class="emoji">🌸</div>Aucune transaction</div>'; return; }
   list.innerHTML='';
@@ -866,7 +876,10 @@ function renderHistorique(){
           <span class="tx-cat" style="background:${catColor}22;color:${catColor}">${esc(catName)}</span>
         </div>
       </div>
-      <div class="tx-amount ${t.type}">${t.type==='dep'?'−':'+'}${fa(t.amount)}</div>
+      <div style="text-align:right">
+        <div class="tx-amount ${t.type}">${t.type==='dep'?'−':'+'}${fa(t.amount)}</div>
+        <div style="font-size:10px;color:#aaa;margin-top:1px">solde: ${fa(soldeMap[t.id])}</div>
+      </div>
       <button class="tx-del" onclick="editTransaction('${t.id}')">✏️</button> 
       <button class="tx-del" onclick="delTransaction('${t.id}')">🗑</button>`;
     list.appendChild(div);
