@@ -508,7 +508,7 @@ if(!localStorage.getItem('anthropic_key')){
   else { document.getElementById('login-page').classList.add('on'); }
 });
 
-aasync function doLogin(){
+async function doLogin(){
   const email = document.getElementById('l-email').value.trim();
   const pwd   = document.getElementById('l-pwd').value;
   const apiKey = document.getElementById('l-apikey')?.value?.trim();
