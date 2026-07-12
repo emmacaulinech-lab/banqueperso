@@ -248,7 +248,7 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
     <div>
       <div class="section-title">💰 Solde & résumé</div>
       <div class="metrics">
-        <div class="mc"><div class="mc-v" id="d-solde">—</div><div class="mc-l">Solde actuel</div></div>
+        <div class="mc" style="cursor:pointer" onclick="editSoldeInitial()"><div class="mc-v" id="d-solde">—</div><div class="mc-l">Solde actuel ✏️</div></div>
         <div class="mc"><div class="mc-v green" id="d-rec">—</div><div class="mc-l">Rentrées</div></div>
         <div class="mc"><div class="mc-v red" id="d-dep">—</div><div class="mc-l">Dépenses</div></div>
       </div>
@@ -488,7 +488,12 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs
 // ════════════════════════════════════════
 // STATE
 // ════════════════════════════════════════
-let DB = { transactions:[], categories:[], params:{soldeInitial:0} };
+let DB = { transactions:[], categories:[], params:{soldeInitial:0, nextSeq:1} };
+
+function nextSeqVal(){
+  if(!DB.params.nextSeq) DB.params.nextSeq=1;
+  return DB.params.nextSeq++;
+}
 let uid = null;
 let currentMonth = new Date().toISOString().slice(0,7); // "2024-05"
 let newTxType = 'dep';
@@ -784,6 +789,22 @@ function renderDashboard(){
   }
 }
 
+async function editSoldeInitial(){
+  const current = DB.params.soldeInitial||0;
+  const val = prompt('Quel est ton solde bancaire réel actuel (celui affiché par ta banque aujourd\'hui) ?\n\nL\'app recalculera automatiquement ton solde de départ pour que tout corresponde.', current.toFixed(2));
+  if(val===null) return;
+  const soldeReel = parseFloat(val.replace(',','.'));
+  if(isNaN(soldeReel)){ alert('Montant invalide'); return; }
+
+  // Recalcule soldeInitial pour que solde actuel = soldeReel
+  const allRec = DB.transactions.filter(t=>t.type==='rec').reduce((s,t)=>s+t.amount,0);
+  const allDep = DB.transactions.filter(t=>t.type==='dep').reduce((s,t)=>s+t.amount,0);
+  DB.params.soldeInitial = soldeReel - allRec + allDep;
+  await save();
+  renderAll();
+  alert('✓ Solde mis à jour');
+}
+
 // ════════════════════════════════════════
 // SAISIE
 // ════════════════════════════════════════
@@ -816,7 +837,7 @@ async function addTransaction(){
   if(!amount||amount<=0){ alert('Montant invalide'); return; }
   if(!date){ alert('Date requise'); return; }
   if(!label){ alert('Libellé requis'); return; }
-  const tx = { id: Date.now().toString(), type:newTxType, amount, date, label, catId };
+  const tx = { id: Date.now().toString(), seq: nextSeqVal(), type:newTxType, amount, date, label, catId };
   DB.transactions.push(tx);
   await save();
   document.getElementById('s-amount').value='';
@@ -844,7 +865,8 @@ function renderHistorique(){
   const typeFilter = document.getElementById('h-type').value;
 
   // Calcule le solde cumulé sur TOUTES les transactions (ordre chronologique), peu importe le filtre
-  const allSorted=[...DB.transactions].sort((a,b)=>a.date.localeCompare(b.date)||String(a.id).localeCompare(String(b.id)));
+const seqOf=t=>t.seq!=null?t.seq:0;
+  const allSorted=[...DB.transactions].sort((a,b)=>a.date.localeCompare(b.date)||seqOf(a)-seqOf(b)||String(a.id).localeCompare(String(b.id)));
   let running=DB.params.soldeInitial||0;
   const soldeMap={};
   allSorted.forEach(t=>{
@@ -857,7 +879,7 @@ function renderHistorique(){
   else if(period==='year') txs = txs.filter(t=>t.date.startsWith(currentMonth.split('-')[0]));
   if(catFilter) txs = txs.filter(t=>t.catId===catFilter);
   if(typeFilter) txs = txs.filter(t=>t.type===typeFilter);
-  txs.sort((a,b)=>b.date.localeCompare(a.date)||String(b.id).localeCompare(String(a.id)));
+txs.sort((a,b)=>b.date.localeCompare(a.date)||seqOf(b)-seqOf(a)||String(b.id).localeCompare(String(a.id)));
   const list = document.getElementById('h-list');
   if(txs.length===0){ list.innerHTML='<div class="empty"><div class="emoji">🌸</div>Aucune transaction</div>'; return; }
   list.innerHTML='';
@@ -1419,11 +1441,11 @@ async function doImport(){
   const checks = document.querySelectorAll('.import-chk');
   const toImport = [];
   checks.forEach(chk=>{
-    if(chk.checked){
-      const i = +chk.dataset.i;
-      toImport.push({...parsedLines[i], id: Date.now().toString()+i});
-    }
-  });
+  if(chk.checked){
+    const i = +chk.dataset.i;
+    toImport.push({...parsedLines[i], id: Date.now().toString()+i, seq: nextSeqVal()});
+  }
+});
   if(toImport.length===0){ alert('Aucune transaction cochée'); return; }
   DB.transactions.push(...toImport);
   await save();
