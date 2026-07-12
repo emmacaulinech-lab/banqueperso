@@ -260,6 +260,12 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
       <div id="d-alerts"><div class="empty"><div class="emoji">✨</div>Aucune alerte ce mois-ci !</div></div>
     </div>
 
+    <!-- Prélèvements récurrents détectés -->
+    <div>
+      <div class="section-title">🔮 Prélèvements à venir</div>
+      <div id="d-recurrences"><div class="empty">Analyse en cours...</div></div>
+    </div>
+
     <!-- Comparaison mois précédent -->
     <div>
       <div class="section-title">📅 vs mois précédent</div>
@@ -668,6 +674,7 @@ function renderAll(){
   renderCategories();
   renderHistoriqueSelects();
   renderAnalyseSelects();
+  renderRecurrences();
 }
 
 // ════════════════════════════════════════
@@ -803,6 +810,83 @@ async function editSoldeInitial(){
   await save();
   renderAll();
   alert('✓ Solde mis à jour');
+}
+
+// ════════════════════════════════════════
+// DÉTECTION DES PRÉLÈVEMENTS RÉCURRENTS
+// ════════════════════════════════════════
+function normalizeLabel(label){
+  return label.toLowerCase()
+    .replace(/\d{1,2}[\/\.]\d{1,2}([\/\.]\d{2,4})?/g,'')
+    .replace(/\bref[\.\:]?\s*\S+/g,'')
+    .replace(/\d{4,}/g,'')
+    .replace(/\s+/g,' ').trim();
+}
+
+function detectRecurrences(){
+  const groups={};
+  DB.transactions.filter(t=>t.type==='dep').forEach(t=>{
+    const key=normalizeLabel(t.label).slice(0,18);
+    if(!key) return;
+    if(!groups[key]) groups[key]=[];
+    groups[key].push(t);
+  });
+
+  const results=[];
+  Object.values(groups).forEach(txs=>{
+    if(txs.length<3) return; // besoin d'au moins 3 occurrences pour être fiable
+    const sorted=[...txs].sort((a,b)=>a.date.localeCompare(b.date));
+    const intervals=[];
+    for(let i=1;i<sorted.length;i++){
+      const d1=new Date(sorted[i-1].date+'T12:00:00');
+      const d2=new Date(sorted[i].date+'T12:00:00');
+      intervals.push(Math.round((d2-d1)/86400000));
+    }
+    const avgInterval=intervals.reduce((s,v)=>s+v,0)/intervals.length;
+    const variance=intervals.reduce((s,v)=>s+Math.pow(v-avgInterval,2),0)/intervals.length;
+    const stdDev=Math.sqrt(variance);
+    // Régulier si écart-type faible et intervalle d'au moins 6 jours (évite faux positifs sur achats fréquents genre courses)
+    if(stdDev<=4 && avgInterval>=6){
+      const last=sorted[sorted.length-1];
+      const lastDate=new Date(last.date+'T12:00:00');
+      const nextDate=new Date(lastDate.getTime()+Math.round(avgInterval)*86400000);
+      const avgAmount=sorted.reduce((s,t)=>s+t.amount,0)/sorted.length;
+      results.push({
+        label:last.label,
+        avgAmount,
+        avgInterval:Math.round(avgInterval),
+        nextDate:nextDate.toISOString().split('T')[0],
+        occurrences:sorted.length
+      });
+    }
+  });
+  return results.sort((a,b)=>a.nextDate.localeCompare(b.nextDate));
+}
+
+function renderRecurrences(){
+  const el=document.getElementById('d-recurrences');
+  if(!el) return;
+  const recs=detectRecurrences();
+  const today=new Date();
+  const aVenir=recs.filter(r=>{
+    const j=Math.floor((new Date(r.nextDate+'T12:00:00')-today)/86400000);
+    return j>=-3&&j<=15; // affiche celles prévues dans les 15 prochains jours (ou légèrement en retard)
+  });
+
+  if(!aVenir.length){
+    el.innerHTML='<div class="empty">Aucun prélèvement récurrent détecté prochainement</div>';
+    return;
+  }
+
+  el.innerHTML=aVenir.map(r=>{
+    const j=Math.floor((new Date(r.nextDate+'T12:00:00')-today)/86400000);
+    const enRetard=j<0;
+    const label=r.label.length>28?r.label.slice(0,28)+'…':r.label;
+    return `<div class="alert-b" style="${enRetard?'background:#fdf0f0;border-color:#c0392b;color:#c0392b':''}">
+      ${enRetard?'⚠️':'🔮'} <strong>${esc(label)}</strong> — env. ${fa(r.avgAmount)}<br>
+      <span style="font-size:11px;opacity:.8">${enRetard?'Attendu il y a '+Math.abs(j)+'j (peut-être déjà passé)':'Prévu dans '+j+'j'} · ~${r.nextDate.split('-').reverse().join('/')} · tous les ${r.avgInterval}j environ (${r.occurrences} occurrences)</span>
+    </div>`;
+  }).join('');
 }
 
 // ════════════════════════════════════════
