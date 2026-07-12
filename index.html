@@ -266,6 +266,12 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
       <div id="d-recurrences"><div class="empty">Analyse en cours...</div></div>
     </div>
 
+    <!-- Projection fin de mois -->
+    <div>
+      <div class="section-title">🎯 Projection fin de mois</div>
+      <div id="d-projection"><div class="empty">Analyse en cours...</div></div>
+    </div>
+
     <!-- Comparaison mois précédent -->
     <div>
       <div class="section-title">📅 vs mois précédent</div>
@@ -679,6 +685,7 @@ function renderAll(){
   renderHistoriqueSelects();
   renderAnalyseSelects();
   renderRecurrences();
+  renderProjectionFinMois();
 }
 
 // ════════════════════════════════════════
@@ -723,21 +730,23 @@ function renderDashboard(){
   const alerts = document.getElementById('d-alerts');
   alerts.innerHTML = '';
   let hasAlert = false;
-  DB.categories.filter(c=>c.type==='dep'&&c.budget>0).forEach(cat => {
+  DB.categories.filter(c=>c.type==='dep').forEach(cat => {
+    const budget = getEffectiveBudget(cat);
+    if(budget<=0) return;
     const spent = txMonth.filter(t=>t.type==='dep'&&t.catId===cat.id).reduce((s,t)=>s+t.amount,0);
-    if(spent >= cat.budget){
+    if(spent >= budget){
       hasAlert = true;
       const a = document.createElement('div');
       a.className = 'alert-b red';
-      const pct = Math.round(spent/cat.budget*100);
-      a.innerHTML = `🚨 <strong>${esc(cat.name)}</strong> — ${fa(spent)} dépensés sur ${fa(cat.budget)} de budget (${pct}%)`;
+      const pct = Math.round(spent/budget*100);
+      a.innerHTML = `🚨 <strong>${esc(cat.name)}</strong> — ${fa(spent)} dépensés sur ${fa(budget)} de budget (${pct}%)`;
       alerts.appendChild(a);
-    } else if(spent >= cat.budget*0.8){
+    } else if(spent >= budget*0.8){
       hasAlert = true;
       const a = document.createElement('div');
       a.className = 'alert-b';
-      const pct = Math.round(spent/cat.budget*100);
-      a.innerHTML = `⚠️ <strong>${esc(cat.name)}</strong> — ${fa(spent)} / ${fa(cat.budget)} (${pct}%) — approche du budget !`;
+      const pct = Math.round(spent/budget*100);
+      a.innerHTML = `⚠️ <strong>${esc(cat.name)}</strong> — ${fa(spent)} / ${fa(budget)} (${pct}%) — approche du budget !`;
       alerts.appendChild(a);
     }
   });
@@ -874,7 +883,7 @@ function renderRecurrences(){
   const today=new Date();
   const aVenir=recs.filter(r=>{
     const j=Math.floor((new Date(r.nextDate+'T12:00:00')-today)/86400000);
-    return j>=-3&&j<=15; // affiche celles prévues dans les 15 prochains jours (ou légèrement en retard)
+    return j>=-3&&j<=30; // fenêtre élargie à 30 jours pour voir venir les grosses échéances
   });
 
   if(!aVenir.length){
@@ -885,14 +894,80 @@ function renderRecurrences(){
   el.innerHTML=aVenir.map(r=>{
     const j=Math.floor((new Date(r.nextDate+'T12:00:00')-today)/86400000);
     const enRetard=j<0;
+    const gros=r.avgAmount>=50;
     const label=r.label.length>28?r.label.slice(0,28)+'…':r.label;
-    return `<div class="alert-b" style="${enRetard?'background:#fdf0f0;border-color:#c0392b;color:#c0392b':''}">
-      ${enRetard?'⚠️':'🔮'} <strong>${esc(label)}</strong> — env. ${fa(r.avgAmount)}<br>
+    return `<div class="alert-b" style="${enRetard?'background:#fdf0f0;border-color:#c0392b;color:#c0392b':gros?'background:#FAEEDA;border-color:#993556':''}">
+      ${enRetard?'⚠️':gros?'💸':'🔮'} <strong>${esc(label)}</strong> — env. ${fa(r.avgAmount)}${gros?' <span style="font-size:10px;background:#993556;color:white;padding:1px 6px;border-radius:100px">GROS</span>':''}<br>
       <span style="font-size:11px;opacity:.8">${enRetard?'Attendu il y a '+Math.abs(j)+'j (peut-être déjà passé)':'Prévu dans '+j+'j'} · ~${r.nextDate.split('-').reverse().join('/')} · tous les ${r.avgInterval}j environ (${r.occurrences} occurrences)</span>
     </div>`;
   }).join('');
 }
 
+function renderProjectionFinMois(){
+  const el=document.getElementById('d-projection');
+  if(!el) return;
+
+  const today=new Date();
+  const y=today.getFullYear(), m=today.getMonth()+1;
+  const moisStr=`${y}-${String(m).padStart(2,'0')}`;
+  const daysInMonth=new Date(y,m,0).getDate();
+  const dayOfMonth=today.getDate();
+  const remainingDays=daysInMonth-dayOfMonth;
+
+  const txMonth=DB.transactions.filter(t=>t.date.startsWith(moisStr));
+  const recMonth=txMonth.filter(t=>t.type==='rec').reduce((s,t)=>s+t.amount,0);
+  const depMonth=txMonth.filter(t=>t.type==='dep').reduce((s,t)=>s+t.amount,0);
+
+  const nbMonthsHist=[...new Set(DB.transactions.map(t=>t.date.slice(0,7)))].filter(mo=>mo!==moisStr).length||1;
+  const avgRecMois=DB.transactions.filter(t=>t.type==='rec'&&t.date.slice(0,7)!==moisStr).reduce((s,t)=>s+t.amount,0)/nbMonthsHist;
+  const avgDepMois=DB.transactions.filter(t=>t.type==='dep'&&t.date.slice(0,7)!==moisStr).reduce((s,t)=>s+t.amount,0)/nbMonthsHist;
+  const avgDailyDep=avgDepMois/30;
+
+  // Grosses échéances récurrentes encore à venir CE mois
+  const recs=detectRecurrences();
+  const echeancesRestantes=recs.filter(r=>r.nextDate.startsWith(moisStr)&&new Date(r.nextDate+'T12:00:00')>=today);
+  const totalEcheancesRestantes=echeancesRestantes.reduce((s,r)=>s+r.avgAmount,0);
+
+  const depRestanteEstimee=Math.max(0,(avgDailyDep*remainingDays))+totalEcheancesRestantes;
+  const recRestanteEstimee=Math.max(0,avgRecMois-recMonth);
+
+  const soldeBase=DB.params.soldeInitial||0;
+  const allRecTotal=DB.transactions.filter(t=>t.type==='rec').reduce((s,t)=>s+t.amount,0);
+  const allDepTotal=DB.transactions.filter(t=>t.type==='dep').reduce((s,t)=>s+t.amount,0);
+  const soldeActuel=soldeBase+allRecTotal-allDepTotal;
+
+  const soldeProjete=soldeActuel+recRestanteEstimee-depRestanteEstimee;
+
+  // Catégorie épargne existante ?
+  const catEpargne=DB.categories.find(c=>/epargne|épargne/i.test(c.name));
+
+  let conseil='';
+  const seuilConfort=avgDepMois*0.5; // garde une marge de sécurité = 50% d'un mois de dépenses
+  if(soldeProjete>seuilConfort){
+    const montantSuggere=Math.floor((soldeProjete-seuilConfort)/10)*10;
+    if(montantSuggere>=20){
+      conseil=`💡 Conseil : tu pourrais mettre <strong>${fa(montantSuggere)}</strong> de côté${catEpargne?' vers ta catégorie '+esc(catEpargne.name):' en épargne'} ce mois-ci, tout en gardant une marge confortable.`;
+    }
+  } else if(soldeProjete<0){
+    conseil=`⚠️ Attention, ta projection de fin de mois est <strong style="color:#c0392b">négative</strong>. Essaie de limiter les dépenses non essentielles jusqu'à la fin du mois.`;
+  } else if(soldeProjete<seuilConfort){
+    conseil=`🌸 Ta projection est positive mais un peu juste — pas d'épargne ce mois-ci, mais tout va bien !`;
+  }
+
+  el.innerHTML=`
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <span style="font-size:11px;color:#aaa;text-transform:uppercase;font-weight:700">Solde estimé au ${daysInMonth}/${String(m).padStart(2,'0')}</span>
+        <span style="font-family:inherit;font-size:20px;font-weight:800;color:${soldeProjete<0?'#c0392b':'#993556'}">${soldeProjete<0?'−':''}${fa(soldeProjete)}</span>
+      </div>
+      <div style="font-size:11px;color:#aaa;margin-bottom:10px">
+        Basé sur : solde actuel ${fa(soldeActuel)} + rentrées restantes estimées ${fa(recRestanteEstimee)} − dépenses restantes estimées ${fa(depRestanteEstimee)}
+        ${echeancesRestantes.length?` (dont ${echeancesRestantes.length} échéance(s) récurrente(s) : ${fa(totalEcheancesRestantes)})`:''}
+      </div>
+      ${conseil?`<div class="alert-b" style="background:#FBEAF0;border-color:#993556;color:#993556">${conseil}</div>`:''}
+    </div>`;
+}
+  
 // ════════════════════════════════════════
 // SAISIE
 // ════════════════════════════════════════
@@ -1055,6 +1130,17 @@ async function addCategory(){
   renderAll();
 }
 
+function getEffectiveBudget(cat){
+  if(cat.budget>0) return cat.budget;
+  const months = [...new Set(DB.transactions.filter(t=>t.catId===cat.id).map(t=>t.date.slice(0,7)))];
+  if(months.length===0) return 0;
+  const total = DB.transactions.filter(t=>t.catId===cat.id).reduce((s,t)=>s+t.amount,0);
+  const totalRec = DB.transactions.filter(t=>t.type==='rec').reduce((s,t)=>s+t.amount,0);
+  const nbMonths = [...new Set(DB.transactions.map(t=>t.date.slice(0,7)))].length || 1;
+  const maxBudget = totalRec / nbMonths;
+  return Math.min(total/months.length, maxBudget);
+}
+
 function renderCategories(){
   const txMonth = DB.transactions.filter(t=>t.date.startsWith(currentMonth));
   ['dep','rec'].forEach(type=>{
@@ -1064,18 +1150,7 @@ function renderCategories(){
     el.innerHTML='';
     cats.forEach(cat=>{
       const spent = txMonth.filter(t=>t.type===type&&t.catId===cat.id).reduce((s,t)=>s+t.amount,0);
-      let autoBudget = 0;
-      if(cat.budget===0){
-        const months = [...new Set(DB.transactions.filter(t=>t.catId===cat.id).map(t=>t.date.slice(0,7)))];
-        if(months.length>0){
-          const total = DB.transactions.filter(t=>t.catId===cat.id).reduce((s,t)=>s+t.amount,0);
-          const totalRec = DB.transactions.filter(t=>t.type==='rec').reduce((s,t)=>s+t.amount,0);
-          const nbMonths = [...new Set(DB.transactions.map(t=>t.date.slice(0,7)))].length || 1;
-          const maxBudget = totalRec / nbMonths;
-          autoBudget = Math.min(total/months.length, maxBudget);
-        }
-      }
-      const effectiveBudget = cat.budget > 0 ? cat.budget : autoBudget;
+      const effectiveBudget = getEffectiveBudget(cat);
       const pct = effectiveBudget>0 ? Math.min(100,Math.round(spent/effectiveBudget*100)) : 0;
       const div=document.createElement('div');
       div.className='cat-item';
