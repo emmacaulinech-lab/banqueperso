@@ -847,7 +847,7 @@ function detectRecurrences(){
 
   const results=[];
   Object.values(groups).forEach(txs=>{
-    if(txs.length<3) return; // besoin d'au moins 3 occurrences pour être fiable
+    if(txs.length<3) return;
     const sorted=[...txs].sort((a,b)=>a.date.localeCompare(b.date));
     const intervals=[];
     for(let i=1;i<sorted.length;i++){
@@ -858,19 +858,26 @@ function detectRecurrences(){
     const avgInterval=intervals.reduce((s,v)=>s+v,0)/intervals.length;
     const variance=intervals.reduce((s,v)=>s+Math.pow(v-avgInterval,2),0)/intervals.length;
     const stdDev=Math.sqrt(variance);
-    // Régulier si écart-type faible et intervalle d'au moins 6 jours (évite faux positifs sur achats fréquents genre courses)
+    const last=sorted[sorted.length-1];
+    const avgAmount=sorted.reduce((s,t)=>s+t.amount,0)/sorted.length;
+
+    // ── Motif régulier en jours (ex: toutes les semaines/2 semaines) ──
     if(stdDev<=4 && avgInterval>=6){
-      const last=sorted[sorted.length-1];
       const lastDate=new Date(last.date+'T12:00:00');
       const nextDate=new Date(lastDate.getTime()+Math.round(avgInterval)*86400000);
-      const avgAmount=sorted.reduce((s,t)=>s+t.amount,0)/sorted.length;
-      results.push({
-        label:last.label,
-        avgAmount,
-        avgInterval:Math.round(avgInterval),
-        nextDate:nextDate.toISOString().split('T')[0],
-        occurrences:sorted.length
-      });
+      results.push({label:last.label,avgAmount,avgInterval:Math.round(avgInterval),nextDate:nextDate.toISOString().split('T')[0],occurrences:sorted.length});
+      return;
+    }
+
+    // ── Motif mensuel (même jour du mois, tolère des mois sautés) ──
+    const joursDuMois=sorted.map(t=>+t.date.split('-')[2]);
+    const avgJour=joursDuMois.reduce((s,v)=>s+v,0)/joursDuMois.length;
+    const varJour=joursDuMois.reduce((s,v)=>s+Math.pow(v-avgJour,2),0)/joursDuMois.length;
+    const stdJour=Math.sqrt(varJour);
+    if(stdJour<=5){
+      const lastDate=new Date(last.date+'T12:00:00');
+      const nextDate=new Date(lastDate.getFullYear(),lastDate.getMonth()+1,Math.round(avgJour));
+      results.push({label:last.label,avgAmount,avgInterval:30,nextDate:nextDate.toISOString().split('T')[0],occurrences:sorted.length,mensuel:true});
     }
   });
   return results.sort((a,b)=>a.nextDate.localeCompare(b.nextDate));
