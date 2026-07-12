@@ -686,7 +686,7 @@ function renderDashboard(){
   const allDep = DB.transactions.filter(t=>t.type==='dep').reduce((s,t)=>s+t.amount,0);
   const solde = soldeBase + allRec - allDep;
 
-  document.getElementById('d-solde').textContent = fa(solde);
+  document.getElementById('d-solde').textContent = (solde<0?'−':'')+fa(solde);
   document.getElementById('d-rec').textContent = fa(totalRec);
   document.getElementById('d-dep').textContent = fa(totalDep);
 
