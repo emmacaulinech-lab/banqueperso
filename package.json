@@ -1,0 +1,6 @@
+{
+  "name": "ma-banque",
+  "private": true,
+  "scripts": {"test": "node tests/finance.test.cjs && node tests/interface.test.cjs"},
+  "devDependencies": {"jsdom": "26.1.0"}
+}
