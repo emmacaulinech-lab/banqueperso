@@ -190,6 +190,7 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
 .swatch.on{border-color:#993556;transform:scale(1.2)}
 
 </style>
+<link rel="stylesheet" href="sunset.css">
 </head>
 <body>
 
@@ -206,11 +207,11 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
     <div class="login-sub">Tes finances, joliment organisées</div>
     <div class="login-field">
       <label>Email</label>
-      <input type="text" id="l-email" placeholder="ton@email.com"/>
+      <input type="email" autocomplete="username" id="l-email" placeholder="ton@email.com"/>
     </div>
 <div class="login-field">
   <label>Mot de passe</label>
-  <input type="password" id="l-pwd" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()"/>
+  <input type="password" autocomplete="current-password" id="l-pwd" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()"/>
 </div>
 <div class="login-field" id="apiKeyField" style="display:none">
   <label>Clé API Anthropic <span style="font-size:10px;color:#aaa">(une seule fois, pour l'import screenshot)</span></label>
@@ -457,7 +458,7 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
 
   <!-- ══ ANALYSE ══ -->
   <div class="pane" id="pane-5">
-  <div class="section-title">📈 Analyse par catégorie</div>
+  <div class="section-title">Bilan mensuel</div>
   <div class="card" style="margin-bottom:8px">
     <button class="btn full" onclick="genererAnalyseGenerale()">🌸 Analyse générale (conseils IA)</button>
   </div>
@@ -511,7 +512,7 @@ function nextSeqVal(){
   return DB.params.nextSeq++;
 }
 let uid = null;
-let currentMonth = new Date().toISOString().slice(0,7); // "2024-05"
+let currentMonth = `${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}`;
 let newTxType = 'dep';
 let selectedColor = '#993556';
 
@@ -523,11 +524,7 @@ const COLORS = ['#993556','#c0392b','#e67e22','#f39c12','#27ae60','#085041','#29
 if(!localStorage.getItem('anthropic_key')){
   document.getElementById('apiKeyField').style.display='block';
 }
-  auth.onAuthStateChanged(u => {
-  document.getElementById('loading').style.display = 'none';
-  if(u){ uid=u.uid; loadData(); }
-  else { document.getElementById('login-page').classList.add('on'); }
-});
+// La connexion démarre après le chargement des nouveaux modules.
 
 async function doLogin(){
   const email = document.getElementById('l-email').value.trim();
@@ -552,38 +549,16 @@ function doLogout(){ auth.signOut(); location.reload(); }
 // ════════════════════════════════════════
 // FIRESTORE — LOAD / SAVE
 // ════════════════════════════════════════
-async function loadData(){
-  try{
-    const doc = await db.collection('users').doc(uid).get();
-    if(doc.exists){
-      const d = doc.data();
-      if(d.transactions) DB.transactions = JSON.parse(d.transactions);
-      if(d.categories)   DB.categories   = JSON.parse(d.categories);
-      if(d.params)       DB.params       = JSON.parse(d.params);
-    }
-  }catch(e){ console.error(e); }
-  document.getElementById('login-page').classList.remove('on');
-  document.getElementById('app').classList.add('on');
-  initUI();
-}
 
-async function save(){
-  if(!uid) return;
-  try{
-    await db.collection('users').doc(uid).set({
-      transactions: JSON.stringify(DB.transactions),
-      categories:   JSON.stringify(DB.categories),
-      params:       JSON.stringify(DB.params)
-    });
-  }catch(e){ console.error(e); }
-}
+
+
 
 // ════════════════════════════════════════
 // UI INIT
 // ════════════════════════════════════════
 function initUI(){
   // Date par défaut saisie
-  document.getElementById('s-date').value = new Date().toISOString().split('T')[0];
+  document.getElementById('s-date').value = Finance.today();
   // Swatches couleur
   const row = document.getElementById('swatch-row');
   COLORS.forEach(c => {
@@ -611,16 +586,7 @@ function initUI(){
 // ════════════════════════════════════════
 // TABS
 // ════════════════════════════════════════
-function gT(i, el){
-  document.querySelectorAll('.pane').forEach(p=>p.classList.remove('on'));
-  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
-  document.getElementById('pane-'+i).classList.add('on');
-  el.classList.add('on');
-  if(i===0) renderDashboard();
-  if(i===2) renderHistorique();
-  if(i===3) renderCategories();
-  if(i===5) renderAnalyse();
-}
+var gT;
 
 // ════════════════════════════════════════
 // MONTH PICKER
@@ -677,303 +643,25 @@ function prevMonth(ym){
 // ════════════════════════════════════════
 // RENDER ALL
 // ════════════════════════════════════════
-function renderAll(){
-  renderDashboard();
-  renderSaisieSelects();
-  renderHistorique();
-  renderCategories();
-  renderHistoriqueSelects();
-  renderAnalyseSelects();
-  renderRecurrences();
-  renderProjectionFinMois();
-}
+
 
 // ════════════════════════════════════════
 // DASHBOARD
 // ════════════════════════════════════════
-function renderDashboard(){
-  const txMonth = DB.transactions.filter(t => t.date.startsWith(currentMonth));
-  const prev = prevMonth(currentMonth);
-  const txPrev = DB.transactions.filter(t => t.date.startsWith(prev));
 
-  const totalRec = txMonth.filter(t=>t.type==='rec').reduce((s,t)=>s+t.amount,0);
-  const totalDep = txMonth.filter(t=>t.type==='dep').reduce((s,t)=>s+t.amount,0);
-  const soldeBase = DB.params.soldeInitial || 0;
-  // Solde actuel = soldeInitial + toutes les rentrées - toutes les dépenses jusqu'à aujourd'hui
-  const allRec = DB.transactions.filter(t=>t.type==='rec').reduce((s,t)=>s+t.amount,0);
-  const allDep = DB.transactions.filter(t=>t.type==='dep').reduce((s,t)=>s+t.amount,0);
-  const solde = soldeBase + allRec - allDep;
 
-  document.getElementById('d-solde').textContent = (solde<0?'−':'')+fa(solde);
-  document.getElementById('d-rec').textContent = fa(totalRec);
-  document.getElementById('d-dep').textContent = fa(totalDep);
 
-  // Comparaison mois précédent
-  const prevRec = txPrev.filter(t=>t.type==='rec').reduce((s,t)=>s+t.amount,0);
-  const prevDep = txPrev.filter(t=>t.type==='dep').reduce((s,t)=>s+t.amount,0);
-  document.getElementById('cmp-dep-cur').textContent = fa(totalDep);
-  document.getElementById('cmp-rec-cur').textContent = fa(totalRec);
-  if(prevDep>0){
-    const diffDep = totalDep - prevDep;
-    const el = document.getElementById('cmp-dep-diff');
-    el.textContent = (diffDep>0?'▲ +':' ▼ ') + fa(Math.abs(diffDep)) + ' vs mois préc.';
-    el.className = 'cmp-diff ' + (diffDep>0?'worse':'better');
-  } else { document.getElementById('cmp-dep-diff').textContent='Pas de données'; }
-  if(prevRec>0){
-    const diffRec = totalRec - prevRec;
-    const el = document.getElementById('cmp-rec-diff');
-    el.textContent = (diffRec>=0?'▲ +':'▼ ') + fa(Math.abs(diffRec)) + ' vs mois préc.';
-    el.className = 'cmp-diff ' + (diffRec>=0?'better':'worse');
-  } else { document.getElementById('cmp-rec-diff').textContent='Pas de données'; }
-
-  // Alertes budget
-  const alerts = document.getElementById('d-alerts');
-  alerts.innerHTML = '';
-  let hasAlert = false;
-  DB.categories.filter(c=>c.type==='dep').forEach(cat => {
-    const budget = getEffectiveBudget(cat);
-    if(budget<=0) return;
-    const spent = txMonth.filter(t=>t.type==='dep'&&t.catId===cat.id).reduce((s,t)=>s+t.amount,0);
-    if(spent >= budget){
-      hasAlert = true;
-      const a = document.createElement('div');
-      a.className = 'alert-b red';
-      const pct = Math.round(spent/budget*100);
-      a.innerHTML = `🚨 <strong>${esc(cat.name)}</strong> — ${fa(spent)} dépensés sur ${fa(budget)} de budget (${pct}%)`;
-      alerts.appendChild(a);
-    } else if(spent >= budget*0.8){
-      hasAlert = true;
-      const a = document.createElement('div');
-      a.className = 'alert-b';
-      const pct = Math.round(spent/budget*100);
-      a.innerHTML = `⚠️ <strong>${esc(cat.name)}</strong> — ${fa(spent)} / ${fa(budget)} (${pct}%) — approche du budget !`;
-      alerts.appendChild(a);
-    }
-  });
-  if(!hasAlert) alerts.innerHTML='<div class="empty"><div class="emoji">✨</div>Aucune alerte ce mois-ci !</div>';
-
-  // Graphique catégories dépenses
-  const chart = document.getElementById('d-cat-chart');
-  const depByCat = {};
-  txMonth.filter(t=>t.type==='dep').forEach(t => {
-    depByCat[t.catId] = (depByCat[t.catId]||0) + t.amount;
-  });
-  const maxDep = Math.max(...Object.values(depByCat), 1);
-  chart.innerHTML = '';
-  const sorted = Object.entries(depByCat).sort((a,b)=>b[1]-a[1]);
-  if(sorted.length===0){ chart.innerHTML='<div class="empty">Aucune dépense ce mois</div>'; }
-  else {
-    sorted.forEach(([catId, total]) => {
-      const cat = DB.categories.find(c=>c.id===catId);
-      const name = cat ? cat.name : 'Sans catégorie';
-      const color = cat ? cat.color : '#ccc';
-      const pct = Math.round(total/maxDep*100);
-      const row = document.createElement('div');
-      row.className = 'bar-row';
-      row.innerHTML = `<div class="bar-label">${esc(name)}</div><div class="bar-wrap"><div class="bar-fill" style="width:${pct}%;background:${color}"></div></div><div class="bar-val">${fa(total)}</div>`;
-      chart.appendChild(row);
-    });
-  }
-
-  // Évolution solde dans le mois
-  const evolEl = document.getElementById('d-solde-evol');
-  // Solde au début du mois = soldeInitial + tout avant ce mois
-  const txBefore = DB.transactions.filter(t=>t.date<currentMonth+'-01');
-  let runSolde = soldeBase;
-  txBefore.forEach(t=>{ runSolde += t.type==='rec' ? t.amount : -t.amount; });
-  // Transactions du mois triées
-  const txSorted = [...txMonth].sort((a,b)=>a.date.localeCompare(b.date));
-  if(txSorted.length===0){ evolEl.innerHTML='<div class="empty">Aucune transaction ce mois</div>'; }
-  else {
-    evolEl.innerHTML='';
-    let s = runSolde;
-    // Solde début de mois
-    const firstLine = document.createElement('div');
-    firstLine.className='solde-line';
-    firstLine.innerHTML=`<span>01/${currentMonth.split('-')[1]}/${currentMonth.split('-')[0]} — début de mois</span><span style="font-weight:700;color:#993556">${fa(s)}</span>`;
-    evolEl.appendChild(firstLine);
-    let lastDate='';
-    txSorted.forEach(t=>{
-      s += t.type==='rec' ? t.amount : -t.amount;
-      if(t.date!==lastDate || true){
-        lastDate=t.date;
-        const cat=DB.categories.find(c=>c.id===t.catId);
-        const line=document.createElement('div');
-        line.className='solde-line';
-        const sign=t.type==='rec'?'+':'-';
-        const col=t.type==='rec'?'#085041':'#c0392b';
-        line.innerHTML=`<span>${fdate(t.date)} · ${esc(t.label)}</span><div style="text-align:right"><div style="color:${col};font-size:11px;font-weight:700">${sign}${fa(t.amount)}</div><div style="font-weight:700;color:#993556;font-size:12px">${fa(s)}</div></div>`;
-        evolEl.appendChild(line);
-      }
-    });
-  }
-}
-
-async function editSoldeInitial(){
-  const current = DB.params.soldeInitial||0;
-  const val = prompt('Quel est ton solde bancaire réel actuel (celui affiché par ta banque aujourd\'hui) ?\n\nL\'app recalculera automatiquement ton solde de départ pour que tout corresponde.', current.toFixed(2));
-  if(val===null) return;
-  const soldeReel = parseFloat(val.replace(',','.'));
-  if(isNaN(soldeReel)){ alert('Montant invalide'); return; }
-
-  // Recalcule soldeInitial pour que solde actuel = soldeReel
-  const allRec = DB.transactions.filter(t=>t.type==='rec').reduce((s,t)=>s+t.amount,0);
-  const allDep = DB.transactions.filter(t=>t.type==='dep').reduce((s,t)=>s+t.amount,0);
-  DB.params.soldeInitial = soldeReel - allRec + allDep;
-  await save();
-  renderAll();
-  alert('✓ Solde mis à jour');
-}
 
 // ════════════════════════════════════════
 // DÉTECTION DES PRÉLÈVEMENTS RÉCURRENTS
 // ════════════════════════════════════════
-function normalizeLabel(label){
-  return label.toLowerCase()
-    .replace(/\d{1,2}[\/\.]\d{1,2}([\/\.]\d{2,4})?/g,'')
-    .replace(/\bref[\.\:]?\s*\S+/g,'')
-    .replace(/\d{4,}/g,'')
-    .replace(/\s+/g,' ').trim();
-}
 
-function detectRecurrences(){
-  const groups={};
-  DB.transactions.filter(t=>t.type==='dep').forEach(t=>{
-    const key=normalizeLabel(t.label).slice(0,18);
-    if(!key) return;
-    if(!groups[key]) groups[key]=[];
-    groups[key].push(t);
-  });
 
-  const results=[];
-  Object.values(groups).forEach(txs=>{
-    if(txs.length<3) return;
-    const sorted=[...txs].sort((a,b)=>a.date.localeCompare(b.date));
-    const intervals=[];
-    for(let i=1;i<sorted.length;i++){
-      const d1=new Date(sorted[i-1].date+'T12:00:00');
-      const d2=new Date(sorted[i].date+'T12:00:00');
-      intervals.push(Math.round((d2-d1)/86400000));
-    }
-    const avgInterval=intervals.reduce((s,v)=>s+v,0)/intervals.length;
-    const variance=intervals.reduce((s,v)=>s+Math.pow(v-avgInterval,2),0)/intervals.length;
-    const stdDev=Math.sqrt(variance);
-    const last=sorted[sorted.length-1];
-    const avgAmount=sorted.reduce((s,t)=>s+t.amount,0)/sorted.length;
 
-    // ── Motif régulier en jours (ex: toutes les semaines/2 semaines) ──
-    if(stdDev<=4 && avgInterval>=6){
-      const lastDate=new Date(last.date+'T12:00:00');
-      const nextDate=new Date(lastDate.getTime()+Math.round(avgInterval)*86400000);
-      results.push({label:last.label,avgAmount,avgInterval:Math.round(avgInterval),nextDate:nextDate.toISOString().split('T')[0],occurrences:sorted.length});
-      return;
-    }
 
-    // ── Motif mensuel (même jour du mois, tolère des mois sautés) ──
-    const joursDuMois=sorted.map(t=>+t.date.split('-')[2]);
-    const avgJour=joursDuMois.reduce((s,v)=>s+v,0)/joursDuMois.length;
-    const varJour=joursDuMois.reduce((s,v)=>s+Math.pow(v-avgJour,2),0)/joursDuMois.length;
-    const stdJour=Math.sqrt(varJour);
-    if(stdJour<=5){
-      const lastDate=new Date(last.date+'T12:00:00');
-      const nextDate=new Date(lastDate.getFullYear(),lastDate.getMonth()+1,Math.round(avgJour));
-      results.push({label:last.label,avgAmount,avgInterval:30,nextDate:nextDate.toISOString().split('T')[0],occurrences:sorted.length,mensuel:true});
-    }
-  });
-  return results.sort((a,b)=>a.nextDate.localeCompare(b.nextDate));
-}
+var renderRecurrences;
 
-function renderRecurrences(){
-  const el=document.getElementById('d-recurrences');
-  if(!el) return;
-  const recs=detectRecurrences();
-  const today=new Date();
-  const aVenir=recs.filter(r=>{
-    const j=Math.floor((new Date(r.nextDate+'T12:00:00')-today)/86400000);
-    return j>=-3&&j<=30; // fenêtre élargie à 30 jours pour voir venir les grosses échéances
-  });
-
-  if(!aVenir.length){
-    el.innerHTML='<div class="empty">Aucun prélèvement récurrent détecté prochainement</div>';
-    return;
-  }
-
-  el.innerHTML=aVenir.map(r=>{
-    const j=Math.floor((new Date(r.nextDate+'T12:00:00')-today)/86400000);
-    const enRetard=j<0;
-    const gros=r.avgAmount>=50;
-    const label=r.label.length>28?r.label.slice(0,28)+'…':r.label;
-    return `<div class="alert-b" style="${enRetard?'background:#fdf0f0;border-color:#c0392b;color:#c0392b':gros?'background:#FAEEDA;border-color:#993556':''}">
-      ${enRetard?'⚠️':gros?'💸':'🔮'} <strong>${esc(label)}</strong> — env. ${fa(r.avgAmount)}${gros?' <span style="font-size:10px;background:#993556;color:white;padding:1px 6px;border-radius:100px">GROS</span>':''}<br>
-      <span style="font-size:11px;opacity:.8">${enRetard?'Attendu il y a '+Math.abs(j)+'j (peut-être déjà passé)':'Prévu dans '+j+'j'} · ~${r.nextDate.split('-').reverse().join('/')} · tous les ${r.avgInterval}j environ (${r.occurrences} occurrences)</span>
-    </div>`;
-  }).join('');
-}
-
-function renderProjectionFinMois(){
-  const el=document.getElementById('d-projection');
-  if(!el) return;
-
-  const today=new Date();
-  const y=today.getFullYear(), m=today.getMonth()+1;
-  const moisStr=`${y}-${String(m).padStart(2,'0')}`;
-  const daysInMonth=new Date(y,m,0).getDate();
-  const dayOfMonth=today.getDate();
-  const remainingDays=daysInMonth-dayOfMonth;
-
-  const txMonth=DB.transactions.filter(t=>t.date.startsWith(moisStr));
-  const recMonth=txMonth.filter(t=>t.type==='rec').reduce((s,t)=>s+t.amount,0);
-  const depMonth=txMonth.filter(t=>t.type==='dep').reduce((s,t)=>s+t.amount,0);
-
-  const nbMonthsHist=[...new Set(DB.transactions.map(t=>t.date.slice(0,7)))].filter(mo=>mo!==moisStr).length||1;
-  const avgRecMois=DB.transactions.filter(t=>t.type==='rec'&&t.date.slice(0,7)!==moisStr).reduce((s,t)=>s+t.amount,0)/nbMonthsHist;
-  const avgDepMois=DB.transactions.filter(t=>t.type==='dep'&&t.date.slice(0,7)!==moisStr).reduce((s,t)=>s+t.amount,0)/nbMonthsHist;
-  const avgDailyDep=avgDepMois/30;
-
-  // Grosses échéances récurrentes encore à venir CE mois
-  const recs=detectRecurrences();
-  const echeancesRestantes=recs.filter(r=>r.nextDate.startsWith(moisStr)&&new Date(r.nextDate+'T12:00:00')>=today);
-  const totalEcheancesRestantes=echeancesRestantes.reduce((s,r)=>s+r.avgAmount,0);
-
-  const depRestanteEstimee=Math.max(0,(avgDailyDep*remainingDays))+totalEcheancesRestantes;
-  const recRestanteEstimee=Math.max(0,avgRecMois-recMonth);
-
-  const soldeBase=DB.params.soldeInitial||0;
-  const allRecTotal=DB.transactions.filter(t=>t.type==='rec').reduce((s,t)=>s+t.amount,0);
-  const allDepTotal=DB.transactions.filter(t=>t.type==='dep').reduce((s,t)=>s+t.amount,0);
-  const soldeActuel=soldeBase+allRecTotal-allDepTotal;
-
-  const soldeProjete=soldeActuel+recRestanteEstimee-depRestanteEstimee;
-
-  // Catégorie épargne existante ?
-  const catEpargne=DB.categories.find(c=>/epargne|épargne/i.test(c.name));
-
-  let conseil='';
-  const seuilConfort=avgDepMois*0.5; // garde une marge de sécurité = 50% d'un mois de dépenses
-  if(soldeProjete>seuilConfort){
-    const montantSuggere=Math.floor((soldeProjete-seuilConfort)/10)*10;
-    if(montantSuggere>=20){
-      conseil=`💡 Conseil : tu pourrais mettre <strong>${fa(montantSuggere)}</strong> de côté${catEpargne?' vers ta catégorie '+esc(catEpargne.name):' en épargne'} ce mois-ci, tout en gardant une marge confortable.`;
-    }
-  } else if(soldeProjete<0){
-    conseil=`⚠️ Attention, ta projection de fin de mois est <strong style="color:#c0392b">négative</strong>. Essaie de limiter les dépenses non essentielles jusqu'à la fin du mois.`;
-  } else if(soldeProjete<seuilConfort){
-    conseil=`🌸 Ta projection est positive mais un peu juste — pas d'épargne ce mois-ci, mais tout va bien !`;
-  }
-
-  el.innerHTML=`
-    <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-        <span style="font-size:11px;color:#aaa;text-transform:uppercase;font-weight:700">Solde estimé au ${daysInMonth}/${String(m).padStart(2,'0')}</span>
-        <span style="font-family:inherit;font-size:20px;font-weight:800;color:${soldeProjete<0?'#c0392b':'#993556'}">${soldeProjete<0?'−':''}${fa(soldeProjete)}</span>
-      </div>
-      <div style="font-size:11px;color:#aaa;margin-bottom:10px">
-        Basé sur : solde actuel ${fa(soldeActuel)} + rentrées restantes estimées ${fa(recRestanteEstimee)} − dépenses restantes estimées ${fa(depRestanteEstimee)}
-        ${echeancesRestantes.length?` (dont ${echeancesRestantes.length} échéance(s) récurrente(s) : ${fa(totalEcheancesRestantes)})`:''}
-      </div>
-      ${conseil?`<div class="alert-b" style="background:#FBEAF0;border-color:#993556;color:#993556">${conseil}</div>`:''}
-    </div>`;
-}
+var renderProjectionFinMois;
   
 // ════════════════════════════════════════
 // SAISIE
@@ -999,22 +687,7 @@ function renderSaisieSelects(){
   });
 }
 
-async function addTransaction(){
-  const amount = parseFloat(document.getElementById('s-amount').value);
-  const date   = document.getElementById('s-date').value;
-  const label  = document.getElementById('s-label').value.trim();
-  const catId  = document.getElementById('s-cat').value;
-  if(!amount||amount<=0){ alert('Montant invalide'); return; }
-  if(!date){ alert('Date requise'); return; }
-  if(!label){ alert('Libellé requis'); return; }
-  const tx = { id: Date.now().toString(), seq: nextSeqVal(), type:newTxType, amount, date, label, catId };
-  DB.transactions.push(tx);
-  await save();
-  document.getElementById('s-amount').value='';
-  document.getElementById('s-label').value='';
-  renderAll();
-  alert('✅ Transaction ajoutée !');
-}
+
 
 // ════════════════════════════════════════
 // HISTORIQUE
@@ -1029,429 +702,38 @@ function renderHistoriqueSelects(){
   });
 }
 
-function renderHistorique(){
-  const period = document.getElementById('h-period').value;
-  const catFilter = document.getElementById('h-cat').value;
-  const typeFilter = document.getElementById('h-type').value;
 
-  // Calcule le solde cumulé sur TOUTES les transactions (ordre chronologique), peu importe le filtre
-const seqOf=t=>t.seq!=null?t.seq:0;
-  const allSorted=[...DB.transactions].sort((a,b)=>a.date.localeCompare(b.date)||seqOf(a)-seqOf(b)||String(a.id).localeCompare(String(b.id)));
-  let running=DB.params.soldeInitial||0;
-  const soldeMap={};
-  allSorted.forEach(t=>{
-    running += t.type==='rec' ? t.amount : -t.amount;
-    soldeMap[t.id]=running;
-  });
 
-  let txs = [...DB.transactions];
-  if(period==='month') txs = txs.filter(t=>t.date.startsWith(currentMonth));
-  else if(period==='year') txs = txs.filter(t=>t.date.startsWith(currentMonth.split('-')[0]));
-  if(catFilter) txs = txs.filter(t=>t.catId===catFilter);
-  if(typeFilter) txs = txs.filter(t=>t.type===typeFilter);
-txs.sort((a,b)=>b.date.localeCompare(a.date)||seqOf(b)-seqOf(a)||String(b.id).localeCompare(String(a.id)));
-  const list = document.getElementById('h-list');
-  if(txs.length===0){ list.innerHTML='<div class="empty"><div class="emoji">🌸</div>Aucune transaction</div>'; return; }
-  list.innerHTML='';
-  txs.forEach(t=>{
-    const cat = DB.categories.find(c=>c.id===t.catId);
-    const catName = cat?cat.name:'—';
-    const catColor = cat?cat.color:'#ccc';
-    const div=document.createElement('div');
-    div.className='tx-item';
-    div.innerHTML=`
-      <div class="tx-dot ${t.type}"></div>
-      <div class="tx-main">
-        <div class="tx-label">${esc(t.label)}</div>
-        <div class="tx-meta">
-          ${fdate(t.date)} · 
-          <span class="tx-cat" style="background:${catColor}22;color:${catColor}">${esc(catName)}</span>
-        </div>
-      </div>
-      <div style="text-align:right">
-        <div class="tx-amount ${t.type}">${t.type==='dep'?'−':'+'}${fa(t.amount)}</div>
-        <div style="font-size:10px;color:#aaa;margin-top:1px">solde: ${fa(soldeMap[t.id])}</div>
-      </div>
-      <button class="tx-del" onclick="editTransaction('${t.id}')">✏️</button> 
-      <button class="tx-del" onclick="delTransaction('${t.id}')">🗑</button>`;
-    list.appendChild(div);
-  });
-}
 
-async function delTransaction(id){
-  if(!confirm('Supprimer cette transaction ?')) return;
-  DB.transactions = DB.transactions.filter(t=>t.id!==id);
-  await save();
-  renderAll();
-}
-async function editTransaction(id){
-  const t = DB.transactions.find(t=>t.id===id);
-  if(!t) return;
 
-  // Montant
-  const amount = prompt('Montant (€) :', t.amount);
-  if(amount===null) return;
-  const newAmount = parseFloat(amount);
-  if(!newAmount||newAmount<=0){ alert('Montant invalide'); return; }
-
-  // Libellé
-  const label = prompt('Libellé :', t.label);
-  if(label===null) return;
-  if(!label.trim()){ alert('Libellé requis'); return; }
-
-  // Date
-  const date = prompt('Date (AAAA-MM-JJ) :', t.date);
-  if(date===null) return;
-  if(!/^\d{4}-\d{2}-\d{2}$/.test(date)){ alert('Format date invalide'); return; }
-
-  // Catégorie
-  const cats = DB.categories;
-  const catList = cats.map((c,i)=>`${i+1}. ${c.name}`).join('\n');
-  const catChoice = prompt(`Catégorie :\n${catList}\n\n0. Sans catégorie\n\nNuméro :`, cats.findIndex(c=>c.id===t.catId)+1||0);
-  if(catChoice===null) return;
-  const catIdx = parseInt(catChoice)-1;
-  const catId = catIdx>=0 && cats[catIdx] ? cats[catIdx].id : '';
-
-  t.amount = newAmount;
-  t.label  = label.trim();
-  t.date   = date;
-  t.catId  = catId;
-
-  await save();
-  renderAll();
-}
 // ════════════════════════════════════════
 // CATÉGORIES
 // ════════════════════════════════════════
-async function addCategory(){
-  const name = document.getElementById('nc-name').value.trim();
-  const type = document.getElementById('nc-type').value;
-  const budget = parseFloat(document.getElementById('nc-budget').value)||0;
-  const color = document.getElementById('nc-color').value;
-  if(!name){ alert('Nom requis'); return; }
-  const cat = { id: Date.now().toString(), name, type, budget, color };
-  DB.categories.push(cat);
-  await save();
-  document.getElementById('nc-name').value='';
-  document.getElementById('nc-budget').value='';
-  renderAll();
-}
-
-function getEffectiveBudget(cat){
-  if(cat.budget>0) return cat.budget;
-  const months = [...new Set(DB.transactions.filter(t=>t.catId===cat.id).map(t=>t.date.slice(0,7)))];
-  if(months.length===0) return 0;
-  const total = DB.transactions.filter(t=>t.catId===cat.id).reduce((s,t)=>s+t.amount,0);
-  const totalRec = DB.transactions.filter(t=>t.type==='rec').reduce((s,t)=>s+t.amount,0);
-  const nbMonths = [...new Set(DB.transactions.map(t=>t.date.slice(0,7)))].length || 1;
-  const maxBudget = totalRec / nbMonths;
-  return Math.min(total/months.length, maxBudget);
-}
-
-function renderCategories(){
-  const txMonth = DB.transactions.filter(t=>t.date.startsWith(currentMonth));
-  ['dep','rec'].forEach(type=>{
-    const el = document.getElementById('cat-list-'+type);
-    const cats = DB.categories.filter(c=>c.type===type);
-    if(cats.length===0){ el.innerHTML='<div class="empty">Aucune catégorie</div>'; return; }
-    el.innerHTML='';
-    cats.forEach(cat=>{
-      const spent = txMonth.filter(t=>t.type===type&&t.catId===cat.id).reduce((s,t)=>s+t.amount,0);
-      const effectiveBudget = getEffectiveBudget(cat);
-      const pct = effectiveBudget>0 ? Math.min(100,Math.round(spent/effectiveBudget*100)) : 0;
-      const div=document.createElement('div');
-      div.className='cat-item';
-      div.innerHTML=`
-        <div class="cat-dot" style="background:${cat.color}"></div>
-        <div style="flex:1">
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
-            <span class="cat-name">${esc(cat.name)}</span>
-            <span class="cat-type" style="background:${cat.color}22;color:${cat.color}">${type==='dep'?'💸 Dépense':'💰 Rentrée'}</span>
-          </div>
-          <div class="cat-budget">
-            Ce mois : <strong>${fa(spent)}</strong>
-            ${effectiveBudget>0?` / budget ${fa(effectiveBudget)} ${cat.budget===0?'<span style="font-size:9px;color:#aaa">(auto)</span>':''}`:''}
-          </div>
-          ${effectiveBudget>0?`<div class="prog"><div class="prog-b" style="width:${pct}%;background:${cat.color}"></div></div>`:''}
-        </div>
-        <div style="display:flex;gap:6px;align-items:center">
-          <input type="number" value="${cat.budget||''}" placeholder="Budget" style="width:80px;padding:5px 8px;font-size:12px;border:1.5px solid #ddd;border-radius:8px" onchange="updateBudget('${cat.id}',this.value)"/>
-          <button class="btn" style="padding:6px 10px;font-size:12px" onclick="editCategory('${cat.id}')">✏️</button>
-          <button class="btn red" style="padding:6px 10px;font-size:12px" onclick="delCategory('${cat.id}')">🗑</button>
-        </div>`;
-      el.appendChild(div);
-    });
- });
-}
 
 
-async function updateBudget(id, val){
-  const cat = DB.categories.find(c=>c.id===id);
-  if(cat){ cat.budget=parseFloat(val)||0; await save(); renderCategories(); }
-}
 
-async function delCategory(id){
-  if(!confirm('Supprimer cette catégorie ?')) return;
-  DB.categories = DB.categories.filter(c=>c.id!==id);
-  await save();
-  renderAll();
-}
 
-async function editCategory(id){
-  const cat = DB.categories.find(c=>c.id===id);
-  if(!cat) return;
-  const name = prompt('Nouveau nom :', cat.name);
-  if(name===null) return;
-  if(name.trim()) cat.name = name.trim();
-  await save();
-  renderAll();
-}
 
-  function renderAnalyseSelects(){
-  const sel = document.getElementById('an-cat');
-  const current = sel.value;
-  sel.innerHTML = '<option value="">— Choisir —</option>';
-  DB.categories.forEach(c=>{
-    const opt = document.createElement('option');
-    opt.value = c.id;
-    opt.textContent = (c.type==='dep'?'💸 ':'💰 ') + c.name;
-    if(c.id===current) opt.selected = true;
-    sel.appendChild(opt);
-  });
-}
 
-function renderAnalyse(){
-const el = document.getElementById('an-content');
-  const catId = document.getElementById('an-cat').value;
 
-  // ── VUE GLOBALE si aucune catégorie sélectionnée ──
-  if(!catId){
-    const txMonth = DB.transactions.filter(t=>t.date.startsWith(currentMonth));
-    const totalDep = txMonth.filter(t=>t.type==='dep').reduce((s,t)=>s+t.amount,0);
-    if(totalDep===0){ el.innerHTML='<div class="empty"><div class="emoji">📊</div>Choisis une catégorie ou importe des transactions</div>'; return; }
 
-    // Top catégories
-    const depByCat = {};
-    txMonth.filter(t=>t.type==='dep').forEach(t=>{ depByCat[t.catId]=(depByCat[t.catId]||0)+t.amount; });
-    const ranked = Object.entries(depByCat).sort((a,b)=>b[1]-a[1]);
-    const medals = ['🥇','🥈','🥉','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣','🔟'];
 
-    let html=`<div class="card" style="margin-bottom:8px">
-      <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#993556;margin-bottom:12px">🏆 Classement ce mois-ci</div>`;
-    ranked.forEach(([cId, val], idx)=>{
-      const cat = DB.categories.find(c=>c.id===cId);
-      const name = cat?cat.name:'Sans catégorie';
-      const color = cat?cat.color:'#ccc';
-      const pct = Math.round(val/totalDep*100);
-      html+=`<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
-        <span style="font-size:16px;width:24px">${medals[idx]||'·'}</span>
-        <div style="flex:1">
-          <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px">
-            <span style="font-weight:700">${esc(name)}</span>
-            <span style="font-weight:800;color:${color}">${fa(val)}</span>
-          </div>
-          <div class="bar-wrap"><div class="bar-fill" style="width:${pct}%;background:${color}"></div></div>
-          <div style="font-size:10px;color:#aaa;margin-top:2px">${pct}% des dépenses du mois</div>
-        </div>
-      </div>`;
-    });
-    html+=`</div>`;
-    el.innerHTML=html;
-    return;
-  }
 
-  // ── VUE DÉTAIL par catégorie ──
-  const cat = DB.categories.find(c=>c.id===catId);
-  if(!cat) return;
-  const txCat = DB.transactions.filter(t=>t.catId===catId);
-  if(txCat.length===0){ el.innerHTML='<div class="empty">Aucune transaction dans cette catégorie</div>'; return; }
 
-  const byMonth = {};
-  txCat.forEach(t=>{ const m=t.date.slice(0,7); byMonth[m]=(byMonth[m]||0)+t.amount; });
-  const months = Object.keys(byMonth).sort();
-  const total = months.reduce((s,m)=>s+byMonth[m],0);
-  const avg = total/months.length;
-  const maxVal = Math.max(...months.map(m=>byMonth[m]));
 
-  // Tendance sur les 3 derniers mois
-  let tendancePct = null;
-  if(months.length>=3){
-    const last3 = months.slice(-3).map(m=>byMonth[m]);
-    tendancePct = Math.round(((last3[2]-last3[0])/last3[0])*100);
-  }
 
-  // Rang dans les dépenses ce mois
-  const txMonth = DB.transactions.filter(t=>t.date.startsWith(currentMonth));
-  const totalDepMois = txMonth.filter(t=>t.type==='dep').reduce((s,t)=>s+t.amount,0);
-  const totalRec = DB.transactions.filter(t=>t.type==='rec').reduce((s,t)=>s+t.amount,0);
-  const nbMonths = [...new Set(DB.transactions.map(t=>t.date.slice(0,7)))].length||1;
-  const avgRec = totalRec/nbMonths;
-  const depByCat = {};
-  txMonth.filter(t=>t.type==='dep').forEach(t=>{ depByCat[t.catId]=(depByCat[t.catId]||0)+t.amount; });
-  const ranked = Object.entries(depByCat).sort((a,b)=>b[1]-a[1]);
-  const rang = ranked.findIndex(([id])=>id===catId)+1;
-  const spentThisMonth = byMonth[currentMonth]||0;
-  const pctOfRec = avgRec>0 ? Math.round(avg/avgRec*100) : 0;
-  const medals = ['1er','2ème','3ème','4ème','5ème'];
+  var renderAnalyseSelects;
 
-  // ── Commentaires intelligents bienveillants ──
-  const comments = [];
-  if(avg>0) comments.push(`💡 En moyenne, tu dépenses <strong>${fa(avg)}/mois</strong> en ${esc(cat.name)} — soit ${pctOfRec}% de tes rentrées mensuelles.`);
-  if(rang>0&&rang<=5) comments.push(`📊 C'est ton <strong>${medals[rang-1]} poste de dépense</strong> ce mois-ci.`);
-  if(cat.budget>0&&spentThisMonth>0){
-    const diff = spentThisMonth - cat.budget;
-    if(diff>0) comments.push(`🚨 Ce mois-ci tu as dépassé ton budget de <strong>${fa(diff)}</strong>. Pas de panique, tu vas y arriver ! 💪`);
-    else comments.push(`✨ Super ! Tu es dans les clous avec <strong>${fa(cat.budget-spentThisMonth)}</strong> de marge sur ton budget ce mois.`);
-  }
-  if(months.length>=2){
-    const last = byMonth[months[months.length-1]];
-    const prev = byMonth[months[months.length-2]];
-    const diff = last-prev;
-    if(diff>0) comments.push(`📈 Tu as dépensé <strong>${fa(Math.abs(diff))} de plus</strong> que le mois dernier — reste vigilante 👀`);
-    else comments.push(`🎉 Bravo ! <strong>${fa(Math.abs(diff))} de moins</strong> que le mois dernier, continue comme ça !`);
-  }
-  if(tendancePct!==null){
-    if(tendancePct>15) comments.push(`⚠️ Sur les 3 derniers mois, cette catégorie a augmenté de <strong>${tendancePct}%</strong>. Tu veux qu'on y garde un œil ?`);
-    else if(tendancePct<-15) comments.push(`🌟 Super tendance ! Cette catégorie a baissé de <strong>${Math.abs(tendancePct)}%</strong> sur 3 mois.`);
-    else comments.push(`😊 Cette catégorie est <strong>stable</strong> sur les 3 derniers mois, c'est rassurant !`);
-  }
+var renderAnalyse;
 
-  let html=``;
 
-  // Commentaires
-  if(comments.length>0){
-    html+=`<div class="card" style="margin-bottom:8px;display:flex;flex-direction:column;gap:8px">
-      <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#993556;margin-bottom:4px">🌸 Analyse</div>`;
-    comments.forEach(c=>{ html+=`<div style="font-size:12px;color:#444;line-height:1.6;padding:8px 10px;background:#fdf6f9;border-radius:8px;border-left:3px solid #F4C0D1">${c}</div>`; });
-    html+=`</div>`;
-  }
-
-  // Résumé
-  html+=`<div class="card" style="margin-bottom:8px">
-    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
-      <div><div style="font-size:11px;color:#aaa;text-transform:uppercase;font-weight:700">Moyenne/mois</div>
-        <div style="font-size:22px;font-weight:800;color:#993556">${fa(avg)}</div></div>
-      <div style="text-align:right"><div style="font-size:11px;color:#aaa;text-transform:uppercase;font-weight:700">Total</div>
-        <div style="font-size:16px;font-weight:800;color:#993556">${fa(total)}</div></div>
-    </div>
-  </div>`;
-
-  // Évolution mois par mois
-  html+=`<div class="card">
-    <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#993556;margin-bottom:12px">📅 Évolution</div>`;
-  months.forEach(m=>{
-    const val=byMonth[m];
-    const budget=cat.budget>0?cat.budget:avg;
-    const pct=Math.min(100,Math.round(val/maxVal*100));
-    const budgetPct=Math.min(100,Math.round(val/budget*100));
-    const overBudget=cat.budget>0&&val>=cat.budget;
-    html+=`<div style="margin-bottom:12px">
-      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
-        <span style="font-weight:700;color:#2d2d2d">${formatMonth(m)}</span>
-        <span style="font-weight:800;color:${overBudget?'#c0392b':'#993556'}">${fa(val)}</span>
-      </div>
-      <div class="bar-wrap" style="height:10px"><div class="bar-fill" style="width:${pct}%;background:${cat.color}"></div></div>
-      ${budget>0?`<div style="font-size:10px;color:#aaa;margin-top:2px">${budgetPct}% du budget ${fa(budget)} ${overBudget?'🚨':''}</div>`:''}
-    </div>`;
-  });
-  html+=`<div style="border-top:1.5px solid #f5eef2;padding-top:10px;display:flex;justify-content:space-between;font-size:12px">
-    <span style="color:#aaa;font-weight:700">MOYENNE</span>
-    <span style="font-weight:800;color:#993556">${fa(avg)} / mois</span>
-  </div></div>`;
-
-  el.innerHTML=html;
-}
-
-async function genererAnalyseGenerale(){
-  const apiKey=localStorage.getItem('anthropic_key');
-  if(!apiKey){ alert('⚠ Configure ta clé API Anthropic (reconnecte-toi et ajoute-la)'); return; }
-  const el=document.getElementById('an-generale');
-  el.innerHTML=`<div class="card" style="text-align:center;padding:24px"><div class="spin" style="margin:0 auto"></div></div>`;
-
-  // Résumé des données pour donner du contexte à l'IA
-  const nbMonths=[...new Set(DB.transactions.map(t=>t.date.slice(0,7)))].length||1;
-  const totalRec=DB.transactions.filter(t=>t.type==='rec').reduce((s,t)=>s+t.amount,0);
-  const totalDep=DB.transactions.filter(t=>t.type==='dep').reduce((s,t)=>s+t.amount,0);
-  const avgRecMois=totalRec/nbMonths;
-  const avgDepMois=totalDep/nbMonths;
-  const soldeActuel=(DB.params.soldeInitial||0)+totalRec-totalDep;
-
-  const depParCat={};
-  DB.transactions.filter(t=>t.type==='dep').forEach(t=>{
-    const cat=DB.categories.find(c=>c.id===t.catId);
-    const nom=cat?cat.name:'Sans catégorie';
-    depParCat[nom]=(depParCat[nom]||0)+t.amount;
-  });
-  const topCats=Object.entries(depParCat).sort((a,b)=>b[1]-a[1]).slice(0,6)
-    .map(([n,v])=>`${n}: ${fa(v/nbMonths)}/mois`).join(', ');
-
-  const recurrences=detectRecurrences();
-  const recurrencesTxt=recurrences.map(r=>`${r.label}: ~${fa(r.avgAmount)} tous les ${r.avgInterval}j`).join(', ')||'aucune détectée';
-
-  try{
-    const response=await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({
-        model:'claude-sonnet-4-6',max_tokens:1200,
-        messages:[{role:'user',content:`Analyse la situation financière personnelle suivante et donne 3-5 conseils bienveillants et concrets pour mieux gérer son argent :
-
-Solde actuel : ${fa(soldeActuel)}${soldeActuel<0?' (compte à découvert)':''}
-Rentrées moyennes/mois : ${fa(avgRecMois)}
-Dépenses moyennes/mois : ${fa(avgDepMois)}
-Taux d'épargne : ${avgRecMois>0?Math.round((avgRecMois-avgDepMois)/avgRecMois*100):0}%
-Principales catégories de dépenses : ${topCats}
-Prélèvements récurrents détectés : ${recurrencesTxt}
-
-Sois bienveillant(e), jamais culpabilisant(e), avec un ton chaleureux (quelques emojis type 🌸💡✨). Donne des conseils PRÉCIS basés sur ces vrais chiffres (pas de généralités vagues). Réponds en français, format court, pas de markdown, juste du texte avec des retours à la ligne entre chaque conseil.`}]
-      })
-    });
-    const data=await response.json();
-    if(data.error) throw new Error(data.error.message||JSON.stringify(data.error));
-    const text=data.content.map(i=>i.text||'').join('');
-    el.innerHTML=`<div class="card" style="line-height:1.7;font-size:13px;white-space:pre-wrap">${esc(text)}</div>`;
-  }catch(e){
-    el.innerHTML=`<div class="card" style="color:#c0392b;text-align:center">⚠️ ${e.message}</div>`;
-  }
-}
 
 // ════════════════════════════════════════
 // IMPORT PDF LCL
 // ════════════════════════════════════════
 let parsedLines = [];
 
-async function handlePDF(file){
-  if(!file||!file.type.includes('pdf')){ alert('Fichier PDF uniquement'); return; }
-  document.getElementById('import-results').style.display='none';
-  const uploadText = document.getElementById('drop-zone').querySelector('.upload-text');
-  uploadText.textContent='Analyse en cours…';
-  try {
-    const arrayBuffer = await file.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({data: arrayBuffer}).promise;
-    // Collecter tous les items de toutes les pages avec leurs coordonnées
-    let allItems = [];
-    for(let p=1; p<=pdf.numPages; p++){
-      const page = await pdf.getPage(p);
-      const vp = page.getViewport({scale:1});
-      const content = await page.getTextContent();
-      content.items.forEach(it=>{
-        allItems.push({
-          x: Math.round(it.transform[4]),
-          // Inverser Y pour avoir haut→bas (PDF a Y=0 en bas)
-          y: Math.round(vp.height - it.transform[5]),
-          str: it.str.trim(),
-          page: p
-        });
-      });
-    }
-    parsedLines = parseLCLByCoords(allItems);
-    renderImportTable();
-  } catch(e){
-    console.error(e);
-    alert('Erreur lors de la lecture du PDF.');
-  }
-  uploadText.textContent='Cliquer ou glisser un PDF ici';
-}
+
 
 async function handleImage(file){
   if(!file||!file.type.startsWith('image/')){ alert('Fichier image uniquement'); return; }
@@ -1521,164 +803,17 @@ Réponds UNIQUEMENT en JSON valide sans backticks :
     410 ≤ x < 490 → colonne DÉBIT  (ex: "150,95")
     x ≥ 490       → colonne CRÉDIT (ex: "1 600,00")
 */
-function parseLCLByCoords(allItems){
-  // Séparer les items en deux zones : gauche (libellés) et droite (données)
-  const leftItems  = allItems.filter(i=>i.x >= 70 && i.x < 340 && i.str.trim());
-  const rightItems = allItems.filter(i=>i.x < 70 || i.x >= 340);
+var parseLCLByCoords;
 
-  // ── Construire les lignes de DONNÉES (droite) groupées par Y ──
-  const rowMap = {};
-  rightItems.forEach(it=>{
-    if(!it.str.trim()) return;
-    const key = Object.keys(rowMap).find(k=>Math.abs(+k.split('_')[0] - it.y) <= 4 && rowMap[k][0].page === it.page);
-    if(key !== undefined) rowMap[key].push(it);
-    else rowMap[it.y+'_'+it.page] = [it];
-  });
 
-  const reDateTx  = /^(\d{2})\.(\d{2})$/;
-  const reDateVal = /^(\d{2})\.(\d{2})\.(\d{2})$/;
-  const reAmt     = /^[\d\s]{1,10}[,\.]\d{2}$/;
-  function parseAmt(s){ return parseFloat(s.replace(/\s/g,'').replace(',','.')); }
 
-  // ── Extraire les transactions depuis les lignes de droite ──
-  const txRows = []; // { y, page, date, debit, credit }
-  Object.keys(rowMap).forEach(key=>{
-    const its = rowMap[key].sort((a,b)=>a.x-b.x);
-    const y = +key.split('_')[0];
-    const dateCol  = its.filter(i=>i.x < 70);
-    const valCol   = its.filter(i=>i.x >= 340 && i.x < 410);
-    const debitCol = its.filter(i=>i.x >= 410 && i.x < 490);
-    const credCol  = its.filter(i=>i.x >= 490);
-    const dateStr  = dateCol.map(i=>i.str).join('').trim();
-    const valStr   = valCol.map(i=>i.str).join('').trim();
-    const debitStr = debitCol.map(i=>i.str).join('').replace(/^\.*$/,'').trim();
-    const credStr  = credCol.map(i=>i.str).join('').replace(/^\.*$/,'').trim();
 
-    
-    if(!reDateTx.test(dateStr) || !reDateVal.test(valStr)) return;
 
-    const [,vDD,vMM,vYY] = valStr.match(reDateVal);
-    const isoDate = `20${vYY}-${vMM}-${vDD}`;
-    const debit  = reAmt.test(debitStr) ? parseAmt(debitStr) : 0;
-    const credit = reAmt.test(credStr)  ? parseAmt(credStr)  : 0;
-    if(debit===0 && credit===0) return;
 
-    txRows.push({ y, page:its[0].page, date:isoDate, debit, credit });
-  });
-
-  txRows.sort((a,b)=>a.page!==b.page ? a.page-b.page : a.y-b.y);
-
-  // ── Pour chaque transaction, trouver le libellé le plus proche par Y ──
-  // Les libellés sont dans la zone gauche (x≈75), groupés par Y
-  const libMap = {};
-  leftItems.forEach(it=>{
-    const key = Object.keys(libMap).find(k=>Math.abs(+k.split('_')[0] - it.y) <= 4 && libMap[k][0].page === it.page);
-    if(key !== undefined) libMap[key].push(it);
-    else libMap[it.y+'_'+it.page] = [it];
-  });
-
-  const techLine  = /^(ref\.|id\.|libelle:|nature\s+du|ref\.mandat|iban|bic\s*:|page\s+\d)/i;
-  const skipWords = /ancien\s+solde|solde\s+(en\s+euros|intermediaire)|totaux|ecritures|lcl\s+vous|taux\s+d[eé]b|r[eé]capitulatif|services\s+de\s+compte|cartes\s+et\s+esp|autres\s+services|sous\s+totaux|garantie\s+des|votre\s+agence|cr[eé]dit\s+lyonnais|guillaume|marseille|plan\s+de/i;
-
-  // Construire un tableau trié des libellés par Y
- const libRows = Object.keys(libMap)
-    .map(k=>({
-      y: +k.split('_')[0],
-      page: +k.split('_')[1],
-      text: libMap[k].sort((a,b)=>a.x-b.x).map(i=>i.str).join(' ').trim()
-    }))
-    .filter(r=>r.text && !techLine.test(r.text) && !skipWords.test(r.text))
-    .sort((a,b)=>a.page!==b.page ? a.page-b.page : a.y-b.y);
-  const results = [];
-  txRows.forEach(tx=>{
-    // Chercher tous les libellés dans une fenêtre Y autour de la transaction (±80px)
-    const exact = libRows.filter(l=>l.page===tx.page && Math.abs(l.y - tx.y) <= 6); 
-    const nearby = exact.length ? exact : libRows.filter(l=>l.page===tx.page && Math.abs(l.y - tx.y) <= 25 && l.y >= tx.y - 6);
-    // Prendre le plus proche
-    nearby.sort((a,b)=>Math.abs(a.y-tx.y)-Math.abs(b.y-tx.y));
-    const label = nearby.length ? nearby[0].text.slice(0,80) : 'Transaction';
-
-    const isRec = /virement|cpam|caf\s+bouches|salaire|remb/i.test(label);
-    let amount, type;
-    if(tx.debit>0 && tx.credit===0){ amount=tx.debit; type='dep'; }
-    else if(tx.credit>0 && tx.debit===0){ amount=tx.credit; type='rec'; }
-    else { amount=isRec?tx.credit:tx.debit; type=isRec?'rec':'dep'; }
-
-    results.push({ date:tx.date, label, amount, type, catId:'' });
-  });
-
- 
-  // Auto-catégorisation par correspondance avec transactions existantes
-  results.forEach(r=>{
-    if(r.catId) return;
-    // Chercher une transaction existante avec un libellé similaire
-    const match = DB.transactions.find(t=>{
-      if(t.type !== r.type) return false;
-      const a = t.label.toLowerCase().replace(/\s+/g,' ').trim();
-      const b = r.label.toLowerCase().replace(/\s+/g,' ').trim();
-      // Correspondance si les 12 premiers caractères sont identiques
-      return a.slice(0,12) === b.slice(0,12);
-    });
-    if(match && match.catId) r.catId = match.catId;
-  });
-
-  // Dédupliquer
-  const seen = new Set();
-  return results.filter(r=>{
-    const k=`${r.date}|${r.label}|${r.amount}`;
-    if(seen.has(k)) return false;
-    seen.add(k); return true;
-  }).filter(r=>r.amount>0 && r.amount<500000);
-}
-
-function renderImportTable(){
-  const tbody = document.getElementById('import-tbody');
-  tbody.innerHTML='';
-  if(parsedLines.length===0){
-    tbody.innerHTML='<tr><td colspan="5" style="text-align:center;color:#aaa;padding:20px">Aucune transaction détectée. Le format LCL a peut-être changé.</td></tr>';
-    document.getElementById('import-results').style.display='block';
-    return;
-  }
-  parsedLines.forEach((tx,i)=>{
-    const tr=document.createElement('tr');
-    // Catégories options
-    const catOpts = ['<option value="">— Catégorie —</option>',
-  ...DB.categories.map(c=>`<option value="${c.id}" ${c.id===tx.catId?'selected':''}>${esc(c.name)}</option>`)
-].join('');
-    tr.innerHTML=`
-      <td><input type="checkbox" class="import-chk" checked data-i="${i}"/></td>
-      <td>${fdate(tx.date)}</td>
-      <td style="max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(tx.label)}</td>
-      <td><span class="import-amount ${tx.type}">${tx.type==='dep'?'−':'+'}${fa(tx.amount)}</span></td>
-      <td><select class="import-cat" data-i="${i}" onchange="parsedLines[this.dataset.i].catId=this.value">${catOpts}</select></td>`;
-    tbody.appendChild(tr);
-  });
-  document.getElementById('import-results').style.display='block';
-}
-
-function toggleAllImport(checked){
-  document.querySelectorAll('.import-chk').forEach(c=>c.checked=checked);
-}
-
-async function doImport(){
-  const checks = document.querySelectorAll('.import-chk');
-  const toImport = [];
-  checks.forEach(chk=>{
-  if(chk.checked){
-    const i = +chk.dataset.i;
-    toImport.push({...parsedLines[i], id: Date.now().toString()+i, seq: nextSeqVal()});
-  }
-});
-  if(toImport.length===0){ alert('Aucune transaction cochée'); return; }
-  DB.transactions.push(...toImport);
-  await save();
-  document.getElementById('import-results').style.display='none';
-  parsedLines=[];
-  renderAll();
-  alert(`✅ ${toImport.length} transaction${toImport.length>1?'s':''} importée${toImport.length>1?'s':''}  !`);
-  gT(2, document.querySelectorAll('.tab')[2]);
-}
 
 </script>
+<script src="finance.js"></script>
+<script src="sunset.js"></script>
 </body>
 </html>
+
