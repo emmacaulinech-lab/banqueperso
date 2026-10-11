@@ -40,8 +40,8 @@ Les tests utilisent exclusivement des données synthétiques. Ils couvrent les c
 
 ## Enveloppes et arrondis
 
-Le plan mensuel se configure dans Budget : revenus réguliers, neuf enveloppes, épargne incluse, premier mois et reports des réserves Animaux/Santé/Cadeaux. La somme doit correspondre aux revenus. La répartition automatique est indicative et chaque opération peut être corrigée sans modifier sa catégorie bancaire. Les virements internes sont exclus.
+Le plan mensuel se configure dans Budget : revenus réguliers, neuf enveloppes, épargne incluse, premier mois et reports des réserves Animaux/Santé/Cadeaux. La somme ne doit pas dépasser les revenus ; le reliquat reste non affecté. La répartition automatique est indicative et chaque opération peut être corrigée sans modifier sa catégorie bancaire. Les virements internes sont exclus.
 
-La tirelire Épargne arrondit les dépenses enregistrées à l’euro supérieur en centimes, depuis la date choisie, avec plafond mensuel. Les montants entiers, rentrées, opérations futures et virements internes sont exclus. Le plafond ne peut dépasser l’épargne du plan. Les arrondis ne changent pas le solde et ne déclenchent aucun virement. Après un virement réel, le total déclaré permet de suivre le reste à virer.
+La tirelire Épargne arrondit chaque dépense enregistrée au multiple supérieur de 1, 5 ou 10 euros en centimes, depuis la date choisie, avec plafond mensuel facultatif. Les multiples exacts, rentrées, opérations futures et virements internes sont exclus. Les arrondis sont indépendants de l’épargne fixe du plan et utilisent l’argent disponible. Les arrondis ne changent pas le solde et ne déclenchent aucun virement. Après un virement réel, une déclaration datée et corrigible réduit le reste à virer. Le suivi jour par jour conserve les reliquats des mois précédents ; les anciens totaux mensuels déclarés restent pris en compte. Un excédent de virements déclaré est signalé si les opérations ou réglages sont modifiés.
 
 Les montants personnels se sauvegardent dans le compte Firebase et ne sont pas inclus dans le code publié.
