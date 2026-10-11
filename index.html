@@ -814,6 +814,15 @@ var parseLCLByCoords;
 </script>
 <script src="finance.js"></script>
 <script src="sunset.js"></script>
+<script src="planning.js"></script>
+<script>
+// Les modules sont tous chargés avant que Firebase puisse ouvrir l'application.
+if(typeof auth!=='undefined')auth.onAuthStateChanged(u=>{
+  if(u){uid=u.uid;loadData();}
+  else{uid=null;document.getElementById('loading').style.display='none';document.getElementById('app').classList.remove('on');document.getElementById('login-page').classList.add('on');}
+});
+
+</script>
 </body>
 </html>
 

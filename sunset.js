@@ -125,7 +125,7 @@ function renderAll(){
   defaults();if(!document.getElementById('sun-home'))return;
   const cat=document.getElementById('h-cat').value;
   renderSaisieSelects();renderHistoriqueSelects();document.getElementById('h-cat').value=cat;
-  renderDashboard();renderHistorique();renderCategories();renderCalendar();renderSavings();renderRefunds();renderReport();
+  renderDashboard();renderHistorique();renderCategories();renderCalendar();renderSavings();renderRefunds();renderReport();if(window.renderPlanning)renderPlanning();
 }
 renderRecurrences=function(){};renderProjectionFinMois=function(){};
 renderAnalyse=function(){renderReport();};renderAnalyseSelects=function(){};
@@ -319,8 +319,3 @@ async function doImport(){
   },selected.length+' opération(s) importée(s).')){parsedLines=[];currentImport=null;document.getElementById('import-results').style.display='none';document.getElementById('sun-import-check').replaceChildren();showView('operations');}
 }
 
-// Les modules sont tous chargés avant que Firebase puisse ouvrir l'application.
-if(typeof auth!=='undefined')auth.onAuthStateChanged(u=>{
-  if(u){uid=u.uid;loadData();}
-  else{uid=null;document.getElementById('loading').style.display='none';document.getElementById('app').classList.remove('on');document.getElementById('login-page').classList.add('on');}
-});

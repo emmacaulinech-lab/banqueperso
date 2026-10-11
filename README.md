@@ -1,6 +1,6 @@
 # Ma Banque
 
-Application personnelle de suivi bancaire, avec connexion Firebase existante. Le site reste statique : `index.html`, `finance.js`, `sunset.js` et `sunset.css` doivent être déployés ensemble. Aucun changement des règles Firebase ni nouvelle clé n'est nécessaire.
+Application personnelle de suivi bancaire, avec connexion Firebase existante. Le site reste statique : `index.html`, `finance.js`, `sunset.js`, `planning.js` et `sunset.css` doivent être déployés ensemble. Aucun changement des règles Firebase ni nouvelle clé n'est nécessaire.
 
 ## Fonctionnement
 
@@ -37,3 +37,11 @@ npm test
 Les tests utilisent exclusivement des données synthétiques. Ils couvrent les centimes, les dates, les paiements identiques, les prévisions séparées, les budgets reportés, les formulaires, la navigation, l'annulation, les échecs de sauvegarde, les conflits entre appareils, les réimports et les contrôles de solde.
 
 À vérifier avant mise en ligne : rendu sur téléphone et ordinateur, connexion au compte Firebase réel et permission existante d'écriture sur le document utilisateur. Les tests simulent Firebase ; ils ne prouvent pas les règles ou la disponibilité du service réel.
+
+## Enveloppes et arrondis
+
+Le plan mensuel se configure dans Budget : revenus réguliers, neuf enveloppes, épargne incluse, premier mois et reports des réserves Animaux/Santé/Cadeaux. La somme doit correspondre aux revenus. La répartition automatique est indicative et chaque opération peut être corrigée sans modifier sa catégorie bancaire. Les virements internes sont exclus.
+
+La tirelire Épargne arrondit les dépenses enregistrées à l’euro supérieur en centimes, depuis la date choisie, avec plafond mensuel. Les montants entiers, rentrées, opérations futures et virements internes sont exclus. Le plafond ne peut dépasser l’épargne du plan. Les arrondis ne changent pas le solde et ne déclenchent aucun virement. Après un virement réel, le total déclaré permet de suivre le reste à virer.
+
+Les montants personnels se sauvegardent dans le compte Firebase et ne sont pas inclus dans le code publié.
