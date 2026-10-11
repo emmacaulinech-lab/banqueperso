@@ -9,3 +9,16 @@ assert.equal(P.allocation(db,{label:'PRET AUTO',catId:'car'}),'fixed');assert.eq
 db.params.monthlyPlan={start:'2026-11',income:200,savings:20,limits:{pets:100,food:80},rollovers:['pets']};db.transactions=[{id:'pet',date:'2026-11-01',amount:30,type:'dep',budgetEnvelope:'pets'}];
 assert.equal(P.plan(db,'2026-10','2026-12-31'),null);assert.equal(P.plan(db,'2026-12','2026-12-31').rows.find(r=>r.id==='pets').carry,70);assert.equal(P.plan(db,'2026-12','2026-12-31').allocated,200);
 console.log('Arrondis vérifiés : euro entier, plafond exact, mois séparés, virements exclus, dates futures, déclaration de virement. Enveloppes : charges distinctes, correction manuelle et reports.');
+const daily={categories:[],params:{roundups:{enabled:true,cap:null,step:5,start:'2026-10-11'}},transactions:[{id:'a',type:'dep',date:'2026-10-11',amount:42},{id:'b',type:'dep',date:'2026-10-11',amount:28},{id:'c',type:'dep',date:'2026-10-11',amount:45},{id:'d',type:'dep',date:'2026-10-12',amount:48.3},{id:'transfer',type:'dep',date:'2026-10-12',amount:1.01,internalTransfer:true},{id:'income',type:'rec',date:'2026-10-12',amount:1.01},{id:'future',type:'dep',date:'2026-11-01',amount:1.01}]};
+assert.equal(P.roundup(daily,'2026-10','2026-10-11').today,5,'42 et 28 : total du jour 5 ; 45 ne produit rien');
+assert.equal(P.roundup(daily,'2026-10','2026-10-12').remaining,6.7,'Les arrondis non virés s’accumulent');
+daily.params.roundups.payments=[{id:'paid',date:'2026-10-11',amount:5}];
+assert.equal(P.roundup(daily,'2026-10','2026-10-12').remaining,1.7);assert.equal(P.roundup(daily,'2026-10','2026-10-12').days[0].remaining,0);
+assert.equal(P.roundup(daily,'2026-11','2026-11-01').remaining,5.69,'Le changement de mois conserve le reliquat');
+daily.transactions.push(...Array.from({length:10},(_,i)=>({id:'many'+i,date:'2026-10-12',type:'dep',amount:1.01})));
+assert.equal(P.roundup(daily,'2026-10','2026-10-12').total,46.6,'Sans plafond, les arrondis peuvent dépasser 20 €');
+daily.params.roundups.payments.push({id:'later',date:'2026-11-03',amount:100});assert.equal(P.roundup(daily,'2026-10','2026-10-12').remaining,41.6,'Un virement futur n’est pas déjà effectué');
+daily.params.roundups.payments[0].amount=50;assert.equal(P.roundup(daily,'2026-10','2026-10-12').remaining,0);assert.equal(P.roundup(daily,'2026-10','2026-10-12').excess,3.4,'Déclaration supérieure aux arrondis signalée');
+assert.equal(P.roundup({params:{},transactions:[],categories:[]},'2026-10','2026-10-12').remaining,0,'Compte sans configuration');
+const flexible={categories:[],transactions:[],params:{monthlyPlan:{start:'2026-11',income:200,savings:0,limits:{food:180},rollovers:[]}}};assert.equal(P.plan(flexible,'2026-11','2026-11-01').free,20,'Budget sans épargne fixe : marge non affectée');
+console.log('Arrondis à 5 € : exemples, cumul quotidien, reliquat entre mois, absence de plafond et virements datés vérifiés.');
