@@ -7,7 +7,7 @@ db.params.roundups.transferred={'2026-11':5};assert.equal(P.roundup(db,'2026-11'
 db.params.roundups.enabled=false;assert.equal(P.roundup(db,'2026-11','2026-11-30').total,0);
 assert.equal(P.allocation(db,{label:'PRET AUTO',catId:'car'}),'fixed');assert.equal(P.allocation(db,{label:'ESCOTA',catId:'car'}),'transport');assert.equal(P.allocation(db,{label:'NETFLIX',catId:'food'}),'fixed');assert.equal(P.allocation(db,{label:'NETFLIX',budgetEnvelope:'unassigned'}),'unassigned');
 db.params.monthlyPlan={start:'2026-11',income:200,savings:20,limits:{pets:100,food:80},rollovers:['pets']};db.transactions=[{id:'pet',date:'2026-11-01',amount:30,type:'dep',budgetEnvelope:'pets'}];
-assert.equal(P.plan(db,'2026-10','2026-12-31'),null);assert.equal(P.plan(db,'2026-12','2026-12-31').rows.find(r=>r.id==='pets').carry,70);assert.equal(P.plan(db,'2026-12','2026-12-31').allocated,200);
+assert.equal(P.plan(db,'2026-10','2026-12-31').preview,true);assert.equal(P.plan(db,'2026-12','2026-12-31').rows.find(r=>r.id==='pets').carry,70);assert.equal(P.plan(db,'2026-12','2026-12-31').allocated,200);
 console.log('Arrondis vérifiés : euro entier, plafond exact, mois séparés, virements exclus, dates futures, déclaration de virement. Enveloppes : charges distinctes, correction manuelle et reports.');
 const daily={categories:[],params:{roundups:{enabled:true,cap:null,step:5,start:'2026-10-11'}},transactions:[{id:'a',type:'dep',date:'2026-10-11',amount:42},{id:'b',type:'dep',date:'2026-10-11',amount:28},{id:'c',type:'dep',date:'2026-10-11',amount:45},{id:'d',type:'dep',date:'2026-10-12',amount:48.3},{id:'transfer',type:'dep',date:'2026-10-12',amount:1.01,internalTransfer:true},{id:'income',type:'rec',date:'2026-10-12',amount:1.01},{id:'future',type:'dep',date:'2026-11-01',amount:1.01}]};
 assert.equal(P.roundup(daily,'2026-10','2026-10-11').today,5,'42 et 28 : total du jour 5 ; 45 ne produit rien');
@@ -27,3 +27,5 @@ assert.equal(P.roundup(mixed,'2026-10','2026-10-11').total,10.37,'Dépense arron
 mixed.params.roundups.payments=[{id:'paid',amount:3,date:'2026-10-03'}];assert.equal(P.roundup(mixed,'2026-10','2026-10-11').remaining,7.37);
 mixed.params.roundups.includeIncome=false;assert.equal(P.roundup(mixed,'2026-10','2026-10-11').total,3,'Option rentrées désactivable');
 console.log('Rentrées arrondies au multiple inférieur, virements exclus et recalcul depuis le début du mois vérifiés.');
+
+assert.equal(P.plan(flexible,'2026-10','2026-10-11').preview,true);assert.equal(P.plan(flexible,'2026-10','2026-10-11').rows.find(r=>r.id==='food').limit,180);assert.equal(P.plan(flexible,'2026-11','2026-11-01').preview,false);
