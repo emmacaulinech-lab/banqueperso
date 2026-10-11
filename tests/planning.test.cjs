@@ -22,3 +22,8 @@ daily.params.roundups.payments[0].amount=50;assert.equal(P.roundup(daily,'2026-1
 assert.equal(P.roundup({params:{},transactions:[],categories:[]},'2026-10','2026-10-12').remaining,0,'Compte sans configuration');
 const flexible={categories:[],transactions:[],params:{monthlyPlan:{start:'2026-11',income:200,savings:0,limits:{food:180},rollovers:[]}}};assert.equal(P.plan(flexible,'2026-11','2026-11-01').free,20,'Budget sans épargne fixe : marge non affectée');
 console.log('Arrondis à 5 € : exemples, cumul quotidien, reliquat entre mois, absence de plafond et virements datés vérifiés.');
+const mixed={categories:[{id:'savings',name:'Épargne'}],params:{roundups:{enabled:true,includeIncome:true,cap:null,step:5,start:'2026-10-01'}},transactions:[{id:'d',type:'dep',amount:42,date:'2026-10-01'},{id:'i',type:'rec',amount:9.9,date:'2026-10-01'},{id:'exact',type:'rec',amount:45,date:'2026-10-01'},{id:'refund',type:'rec',amount:2.47,date:'2026-10-02'},{id:'internal',type:'rec',amount:12.47,date:'2026-10-02',internalTransfer:true},{id:'savings',type:'rec',amount:12.47,date:'2026-10-02',catId:'savings'},{id:'old',type:'rec',amount:9.9,date:'2026-09-30'},{id:'future',type:'rec',amount:9.9,date:'2026-10-12'}]};
+assert.equal(P.roundup(mixed,'2026-10','2026-10-11').total,10.37,'Dépense arrondie vers le haut et rentrées vers le bas, à partir du premier octobre');
+mixed.params.roundups.payments=[{id:'paid',amount:3,date:'2026-10-03'}];assert.equal(P.roundup(mixed,'2026-10','2026-10-11').remaining,7.37);
+mixed.params.roundups.includeIncome=false;assert.equal(P.roundup(mixed,'2026-10','2026-10-11').total,3,'Option rentrées désactivable');
+console.log('Rentrées arrondies au multiple inférieur, virements exclus et recalcul depuis le début du mois vérifiés.');
