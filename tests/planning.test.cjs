@@ -1,0 +1,11 @@
+const assert=require('node:assert/strict');require('../finance.js');const P=require('../planning.js');
+const db={categories:[{id:'car',name:'VOITURE'},{id:'food',name:'Courses'}],params:{roundups:{enabled:true,start:'2026-11-01',cap:20}},transactions:[{id:'a',date:'2026-11-01',amount:48.3,type:'dep'}, {id:'b',date:'2026-11-02',amount:48,type:'dep'}, {id:'transfer',date:'2026-11-02',amount:10.1,type:'dep',internalTransfer:true},{id:'income',date:'2026-11-02',amount:10.1,type:'rec'},{id:'future',date:'2026-12-01',amount:10.1,type:'dep'}]};
+assert.equal(P.roundup(db,'2026-11','2026-11-30').total,.7);assert.equal(P.roundup(db,'2026-10','2026-11-30').total,0);
+for(let i=0;i<30;i++)db.transactions.push({id:'extra'+i,date:'2026-11-03',amount:1.01,type:'dep'});
+assert.equal(P.roundup(db,'2026-11','2026-11-30').total,20);assert.equal(P.roundup(db,'2026-12','2026-12-31').total,.9);
+db.params.roundups.transferred={'2026-11':5};assert.equal(P.roundup(db,'2026-11','2026-11-30').remaining,15);
+db.params.roundups.enabled=false;assert.equal(P.roundup(db,'2026-11','2026-11-30').total,0);
+assert.equal(P.allocation(db,{label:'PRET AUTO',catId:'car'}),'fixed');assert.equal(P.allocation(db,{label:'ESCOTA',catId:'car'}),'transport');assert.equal(P.allocation(db,{label:'NETFLIX',catId:'food'}),'fixed');assert.equal(P.allocation(db,{label:'NETFLIX',budgetEnvelope:'unassigned'}),'unassigned');
+db.params.monthlyPlan={start:'2026-11',income:200,savings:20,limits:{pets:100,food:80},rollovers:['pets']};db.transactions=[{id:'pet',date:'2026-11-01',amount:30,type:'dep',budgetEnvelope:'pets'}];
+assert.equal(P.plan(db,'2026-10','2026-12-31'),null);assert.equal(P.plan(db,'2026-12','2026-12-31').rows.find(r=>r.id==='pets').carry,70);assert.equal(P.plan(db,'2026-12','2026-12-31').allocated,200);
+console.log('Arrondis vérifiés : euro entier, plafond exact, mois séparés, virements exclus, dates futures, déclaration de virement. Enveloppes : charges distinctes, correction manuelle et reports.');
